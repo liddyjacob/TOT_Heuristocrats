@@ -3,6 +3,19 @@ from ai.heuristocrats.constants import *
 
 FOLIAGE_STATE = None
 
+
+class FoliageRegisry:
+    def __init__(self):
+        self.fstate = []
+        # first, we begin by generating NONEs for the whole world.
+        for x in range(HWSIZE):
+            xl = []
+            for y in range(HWSIZE):
+                xl.append(False)
+            self.fstate.append(xl)
+
+FOLIAGE_REGISTRY = FoliageRegisry()
+
 def initialize_foliage_state():
     global FOLIAGE_STATE
 
@@ -88,7 +101,8 @@ def reflect(mapdata):
             reflected_data = redefine_if_unknown(all_coords, reflected_data)
 
     return reflected_data
-            
+
+
 
 initialize_foliage_state()
 

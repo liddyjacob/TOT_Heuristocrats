@@ -51,6 +51,8 @@ def aggregate_weight(exp_weight_map):
 
 
 def multi_aggregate(exp_weight_map, num_aggregates):
+    exp_weight_map = deepcopy(exp_weight_map)
+
     for i in range(num_aggregates):
         exp_weight_map = aggregate_weight(exp_weight_map)
     
@@ -73,3 +75,10 @@ def apply_mask(exp_weight_map):
 
 
 # run aggregate_weight multiple times to get choices of exploration.
+
+def find_target_on_heatmap(exp_heatmap, islands, island_no):
+    max_value, max_index = max((x, (i, j))
+                           for i, row in enumerate(exp_heatmap)
+                           for j, x in enumerate(row) if islands[i][j] == island_no)
+
+    return max_index
