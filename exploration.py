@@ -16,9 +16,9 @@ def initialize_exp_mask():
     for x in range(WSIZE):
         xl = []
         for y in range(WSIZE):
-            this_weight = math.sqrt(
+            this_weight = math.sqrt(math.sqrt(
                 (abs(x - HWSIZE) + HWSIZE) * (abs(y - HWSIZE) + HWSIZE)
-            ) / (2 * WSIZE)
+            ) / (2 * WSIZE))
             xl.append(this_weight)
         EXP_MASK.append(xl)
 

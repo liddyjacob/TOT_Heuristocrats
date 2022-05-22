@@ -85,6 +85,9 @@ class objRegistry:
     # Deregester all the unnaccounted members
     def deregisterUnaccounted(self):
         [self.registry.pop(key) for key in self.not_lookup]
+
+        if len(self.not_lookup) !=0:
+            print("Deregistered Something!") 
         self.not_lookup = set()
 
     # Register an object and wrap it in my systems
@@ -146,9 +149,19 @@ class CombinedWorldState:
         obj = self.world_state_raw[x][y]
         obj_id = obj["id"]
 
+        obj['x'] = x
+        obj['y'] = y
+
+        wrapped_obj = None
         if REGISTRY.lookup(obj_id) is None:
             wrapped_obj = REGISTRY.register(obj)
-            self.object_id_coord[(x,y)] = wrapped_obj         
+            self.object_id_coord[(x,y)] = wrapped_obj
+        else:
+            wrapped_obj = REGISTRY.lookup(obj_id)
+
+        objt = type(wrapped_obj)
+        if issubclass(objt, Unit) or issubclass(objt, Building):
+            wrapped_obj.update(obj)
 
     def get_coord(self, pair):
         x = pair[0]
@@ -177,11 +190,11 @@ def run(world_state, players, team_idx):
     # and stuff.
 
     iterate_over_map(cws)
-    print(REGISTRY)
+    #print(REGISTRY)
 
     empire = cws.gatherEmpire()
     
-    commands = [unit.execute() for unit in empire]
+    commands = [unit.execute(cws) for unit in empire]
 
-    return ({})
+    return (commands)
     # Determine what the foliage is for unexplored tiles.

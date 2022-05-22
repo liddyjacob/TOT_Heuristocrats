@@ -2,6 +2,9 @@ class Building:
     def __init__(self, obj):
         self.team = obj["team"]
 
+    # for updating health and stuff
+    def update(self, obj):
+        pass
 
 class Townhall(Building):
     def __init__(self, obj):
