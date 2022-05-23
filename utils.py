@@ -20,7 +20,7 @@ def generate_exploration_map(mapdata):
 # DFS Traversal to find the count of
 # island surrounded by water
 def dfs(matrix, visited, x, y, n, m, island_id = 0):
-     
+    
     # If the land is already visited
     # or there is no land or the
     # coordinates gone out of matrix

@@ -1,3 +1,5 @@
+OUR_KINGDOM_ID = 0
+
 
 WSIZE = 96
 HWSIZE = 48

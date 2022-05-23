@@ -84,6 +84,11 @@ class objRegistry:
 
     # Deregester all the unnaccounted members
     def deregisterUnaccounted(self):
+        for key in self.not_lookup:
+            obj = self.registry[key]
+            if issubclass(type(obj), Unit):
+                obj.kill()
+
         [self.registry.pop(key) for key in self.not_lookup]
 
         if len(self.not_lookup) !=0:
@@ -184,6 +189,7 @@ class CombinedWorldState:
     
 def run(world_state, players, team_idx):
 
+    Unit.our_kingdom = team_idx 
     cws = CombinedWorldState(world_state, players, team_idx)
 
     # Always iterate over the map ONCE at the beginning to update units
@@ -193,7 +199,7 @@ def run(world_state, players, team_idx):
     #print(REGISTRY)
 
     empire = cws.gatherEmpire()
-    
+
     commands = [unit.execute(cws) for unit in empire]
 
     return (commands)
