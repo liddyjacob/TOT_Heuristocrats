@@ -19,7 +19,6 @@ class TeamUnitRegistry:
 
 
     def register(self, unit):
-
         next_id = self.id_stack[unit.type()]
         if len(self.id_stack[unit.type()]) == 0:
             # must have no units to replace, so 
@@ -37,9 +36,7 @@ class TeamUnitRegistry:
 
         self.id_stack[unit.type()].append(deregister_id)
 
-
 TUR = TeamUnitRegistry()
-
 
 class Unit:
     our_kingdom = 0
@@ -51,7 +48,6 @@ class Unit:
         self.move_stack = []
         self.id = obj['id']
         self.team = obj['team']
-
 
         if self.team == self.our_kingdom:
             self.unit_number = TUR.register(self)
@@ -86,7 +82,6 @@ class Unit:
 
     def __hash__(self):
         return hash(self.id)
-
 
 class Villager(Unit):
     def __init__(self, obj):

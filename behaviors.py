@@ -1,6 +1,9 @@
 from re import U
 from ai.heuristocrats.moves import Move
 
+# TODO Make Dumb behavior that just builds a damn town center. 
+# that way I can move on and build more programs
+
 class Behavior:
     def __init__(self):
         pass
@@ -17,6 +20,31 @@ class BehaviorMoveTest(Behavior):
 
     def is_finished(self, unit):
         return (len(self.move_stack) == 0)
+
+from ai.shitutils import find_good_buildsite
+class BehaviorBuildTownTest(Behavior):
+    def __init__(self, type):
+        self.target_location = None
+
+    # Need to determine where strategically.
+    def execute(self, unit, cws):
+        if self.target_location is None:
+            self.target_location = find_good_buildsite(cws.world_state_raw, unit.x, unit.y, 3)
+            
+
+    def is_finished(self, unit):
+        return False
+
+class BehaviorBuild(Behavior):
+    def __init__(self, type):
+        self.goal = type
+
+    # Need to determine where strategically.
+    def execute(self, unit, cws):
+        pass
+
+    def is_finished(self, unit):
+        return False
 
 from ai.heuristocrats.exploration import initialize_exp_weight_map, multi_aggregate, exp_render, find_target_on_heatmap
 from ai.heuristocrats.foliage_finder import initialize_foliage_state, reflect

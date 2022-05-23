@@ -1,17 +1,18 @@
 from asyncio.streams import FlowControlMixin
 from glob import glob
+from pickle import UNICODE
 from tkinter.messagebox import NO
 from ai.shitutils import get_tiles, path_to_coord
 from enum import Enum
 from render import render
 from ai.heuristocrats.units import Villager, Archer, Infantry, Calvary, Skeleton, Unit
 from ai.heuristocrats.buildings import Townhall, Barracks, Range, Stable, House, Building
-from ai.heuristocrats.resources import Tree, Gold, Other
+from ai.heuristocrats.resources import Resource, Tree, Gold, Other
 from ai.heuristocrats.constants import *
 from ai.heuristocrats.foliage_finder import initialize_foliage_state, reflect
 from ai.heuristocrats.exploration import initialize_exp_weight_map, multi_aggregate, exp_render, find_target_on_heatmap
 from ai.heuristocrats.utils import generate_exploration_map, getClosedIslands, printAsIs, cust_render
-
+from ai.heuristocrats.annotated_world import ANNO_WORLD
 
 # notes
 """
@@ -77,9 +78,10 @@ class objRegistry:
         if id in self.not_lookup:
             self.not_lookup.remove(id)
 
-    def lookup(self, id):
+    def lookup(self, id, register_lookup = False):
         # used to determine if an object has died.
-        self.registerLookup(id)
+        if register_lookup:
+            self.registerLookup(id)
         return self.registry.get(id)
 
     # Deregester all the unnaccounted members
@@ -121,11 +123,14 @@ def iterate_over_map(cws):
     global REGISTRY
     REGISTRY.clearLookupHistory()
 
-    for x in range(WSIZE):
-        for y in range(WSIZE):
-            cws.identify_and_associate(x,y)
+    for x in range(cws.length):
+        for y in range(cws.height):
+            obj = cws.identify_and_associate(x,y)
+            # update the 'annotated world'
+            ANNO_WORLD.update(x,y,obj)
 
     REGISTRY.deregisterUnaccounted()
+    ANNO_WORLD.modify_world_state(cws)
             # S
 
 # Use this to force the world state to use my interfaces
@@ -134,6 +139,8 @@ class CombinedWorldState:
         self.world_state_raw = world_state
         self.players_raw = players
         self.team_id = team_idx
+        self.height = len(self.world_state_raw)
+        self.length = len(self.world_state_raw[0])
         
         # Associate coords with unique ids
         self.object_id_coord = {}
@@ -144,12 +151,12 @@ class CombinedWorldState:
         # WARNING THIS REMOVES INFORMATION FROM THE MAP
         if self.world_state_raw[x][y] is None:
             self.object_id_coord[(x,y)] = Other.UNOCCUPIED
-            return
+            return Other.UNOCCUPIED
 
         # I NEED TO DIFFERENTIATE BETWEEN UNVISITED AND UNOCCUPIED.
         if self.world_state_raw[x][y] == 'u':
             self.object_id_coord[(x,y)] = Other.UNKNOWN
-            return
+            return Other.UNKNOWN
 
         obj = self.world_state_raw[x][y]
         obj_id = obj["id"]
@@ -158,25 +165,58 @@ class CombinedWorldState:
         obj['y'] = y
 
         wrapped_obj = None
-        if REGISTRY.lookup(obj_id) is None:
+        if REGISTRY.lookup(obj_id, register_lookup=True) is None:
             wrapped_obj = REGISTRY.register(obj)
-            self.object_id_coord[(x,y)] = wrapped_obj
+            self.object_id_coord[(x,y)] = obj_id
         else:
             wrapped_obj = REGISTRY.lookup(obj_id)
+            self.object_id_coord[(x,y)] = obj_id
 
         objt = type(wrapped_obj)
         if issubclass(objt, Unit) or issubclass(objt, Building):
             wrapped_obj.update(obj)
+
+        return wrapped_obj
 
     def get_coord(self, pair):
         x = pair[0]
         y = pair[1]
 
         obj_id = self.object_id_coord[(x,y)]
+
+        # wonky system workout
+        if obj_id == Other.UNOCCUPIED or obj_id == Other.UNKNOWN:
+            return obj_id 
+
         if obj_id is not None:
             return REGISTRY.lookup(obj_id)
         
         return None
+
+    def is_traversable(self, pair):
+        x = pair[0]
+        y = pair[1]
+
+        obj_id = self.object_id_coord[(x,y)]
+
+        # wonky system workout
+        return (obj_id == Other.UNOCCUPIED or obj_id == Other.UNKNOWN or obj_id is None)
+
+
+    # set the coordinate to the new 
+    def set_coord(self, pair, wrapped_object):
+        x = pair[0]
+        y = pair[1]
+
+
+        if wrapped_object == Other.UNKNOWN or wrapped_object == Other.UNOCCUPIED:
+            self.object_id_coord[(x,y)] = wrapped_object
+            return
+        
+        self.object_id_coord[(x,y)] = wrapped_object.id
+        REGISTRY.registry[wrapped_object.id] = wrapped_object
+        # TODO set the wrapped object in registry.
+        # id is wrapped_object.id
 
     def gatherEmpire(self):
         all_units = [obj for obj in REGISTRY.dumpObjects() if issubclass(type(obj), Unit)]
@@ -186,7 +226,46 @@ class CombinedWorldState:
         all_buildings = [obj for obj in REGISTRY.dumpObjects() if issubclass(type(obj), Building)]
         return [b for b in all_buildings if b.team == self.team_id]
     
-    
+    def render(self):
+        from render import TREE as COL_TREE, GOLD as COL_GOLD, NORM, teamcols
+
+        print_string = ''
+        for y in range(self.length):
+            for x in range(self.height):
+                obj = self.get_coord((x, y))
+
+                if obj == Other.UNKNOWN:
+                    print_string += NORM + "?."
+                if obj == Other.UNOCCUPIED:
+                    print_string += NORM + " ."
+                if issubclass(type(obj), Unit):
+                    t = obj.type()[0]
+                    color = teamcols[obj.team]
+                    print_string+= color + t + '.'
+                if issubclass(type(obj), Resource):
+                    color = ''
+                    char = 'g'
+                    if type(obj) == Tree:
+                        color = COL_TREE
+                        char = 't'
+                    if type(obj) == Gold:
+                        color = COL_GOLD
+                        char = 'g'
+
+                    extra = '.'
+                    if obj.theoretical:
+                        extra = '*'
+
+                    print_string += color + char + extra
+
+                if issubclass(type(obj), Building):
+                    print_string += 'b '
+
+            print_string += (NORM + '\n')
+        print(print_string)
+
+
+
 def run(world_state, players, team_idx):
 
     Unit.our_kingdom = team_idx 
@@ -202,5 +281,6 @@ def run(world_state, players, team_idx):
 
     commands = [unit.execute(cws) for unit in empire]
 
+    cws.render()
     return (commands)
     # Determine what the foliage is for unexplored tiles.

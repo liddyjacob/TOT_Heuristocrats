@@ -129,3 +129,38 @@ def cust_render(world_state):
                 print(NORM + " ", end="")
             #print('  ', end='')
         print(NORM)
+
+
+from random import shuffle
+def get_path(cws, start, end):
+    queue = [[start]]
+    if start == end:
+        return None
+
+    visited = set()
+    while len(queue) > 0:
+        path = queue.pop()
+        if end == path[-1]:
+            return path
+
+        if path[-1] not in visited:
+            # Not traversable, and not the base unit. Do not 
+            if (path[-1] != start and cws.is_traversable(path[-1])):
+                continue
+            
+            # this is a valid path and we have visited it.
+            visited.add(path[-1])
+            
+            # try diagonal moves first:
+            d_movements = shuffle([(-1,-1), (-1,1), (1,-1), (1,1)])
+            
+            # straight
+            s_movements = shuffle([(-1,0), (0,1), (1,0), (0,-1)])
+            all_movements = d_movements + s_movements
+
+            for m in all_movements:
+                if cws.is_traversable(m):
+
+                    new_path = list(path)
+                    new_path.append()
+

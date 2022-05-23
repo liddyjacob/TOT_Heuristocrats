@@ -14,10 +14,15 @@ class Resource:
         self.obj_raw = obj
         self.theoretical = theoretical
 
+
 class Tree(Resource):
     def __init__(self, obj, theoretical = False):
         super().__init__(obj, theoretical)
+        if self.theoretical:
+            self.id = -1
 
 class Gold(Resource):
     def __init__(self, obj, theoretical = False):
         super().__init__(obj, theoretical)
+        if self.theoretical:
+            self.id = -2
