@@ -7,11 +7,10 @@ from ai.shitutils import get_tiles, path_to_coord
 from enum import Enum
 from engine import SKEL_TICKS
 from render import render
-from ai.heuristocrats.units import Villager, Archer, Infantry, Calvary, Skeleton, Unit, NUMBER_SYSTEM
+from ai.heuristocrats.units import Villager, Archer, Infantry, Calvary, Skeleton, Unit, reset_number_system
 from ai.heuristocrats.buildings import Townhall, Barracks, Range, Stable, House, Building
 from ai.heuristocrats.resources import MapObj, Resource, Tree, Gold,  Unknown, Unoccupied, MapObj
 from ai.heuristocrats.constants import *
-from ai.heuristocrats.utils import multi_aggregate
 from ai.heuristocrats.annotated_world import ANNO_WORLD
 import time
 import statistics
@@ -102,9 +101,15 @@ class CombinedWorldState:
         self.length = len(self.world_state_raw[0])
         self.empire = None
         self.city = None
-        
+
+        self.wood = players[team_idx]['wood']
+        self.gold = players[team_idx]['gold']
+
         # Associate coords with unique ids
         self.object_coord = {}
+
+    def can_afford(self, pair):
+        return ( self.wood >= pair[0] and self.gold >= pair[1] )
 
     def identify_and_associate(self,x,y):
         obj = self.world_state_raw[x][y]
@@ -120,7 +125,7 @@ class CombinedWorldState:
         x = pair[0]
         y = pair[1]
 
-        return self.object_coord[(x,y)]
+        return self.object_coord.get((x,y))
 
     def is_traversable(self, pair):
         x = pair[0]
@@ -128,12 +133,35 @@ class CombinedWorldState:
 
         obj = self.object_coord.get((x,y))
 
-        if obj in self.gatherEmpire():
-            return True
-
         # wonky system workout
         return (type(obj) == Unoccupied or type(obj) == Unknown)
 
+
+    def get_corner_resource(self, typeof, island_id):
+        # todo rewrite this
+        
+        t = time.time()
+        if self.resources_ordered.get(typeof) is None:
+            self.resources_ordered[typeof] = {}
+            for island_id in range(1, self.num_islands + 1):
+                self.resources_ordered[typeof][island_id] = []
+                all_x = [(obj.x, obj.y) for obj in self.object_coord.values() if type(obj) == typeof
+                    and island_id in obj.island_ids]
+                
+                all_x = sorted(all_x, key = lambda pair: max(abs(pair[0] - self.KINGDOM_EXTREME[0]),
+                    abs(pair[1] - self.KINGDOM_EXTREME[1])), reverse=True)
+                
+                self.resources_ordered[typeof][island_id] = all_x
+
+        if len(self.resources_ordered[typeof][island_id]):
+            rval = self.resources_ordered[typeof][island_id][-1]
+            self.resources_ordered[typeof][island_id].pop()
+            print(f"conrer calc time: {time.time() - t}")
+
+            return rval
+        else:
+            print(f'requested but did not exist: {island_id}')
+            return None
 
     # set the coordinate to the new 
     def set_coord(self, pair, wrapped_object):
@@ -144,20 +172,32 @@ class CombinedWorldState:
         # TODO set the wrapped object in registry.
         # id is wrapped_object.id
 
-    def post_processing_steps(self):
-        self.make_islands()
+    def get_island_id(self, pair):
+        x = pair[0]
+        y = pair[1]
+        
+        id = self.island_ids.get((x,y))
+        if id is None:
+            return 0
+        else:
+            return id
 
+    def post_processing_steps(self):
         avg_empire_location = self.gatherEmpire() + self.gatherCity()
         x_mean = statistics.mean([obj.x for obj in avg_empire_location])
         y_mean = statistics.mean([obj.y for obj in avg_empire_location])
-
 
         KINGDOM_CORNER = (int((x_mean / (self.length / 2))), int(y_mean / (self.length / 2)) )
         self.KINGDOM_XMIN = int(KINGDOM_CORNER[0] * (self.length / 2))
         self.KINGDOM_XMAX = int(self.KINGDOM_XMIN + (self.length / 2))
         self.KINGDOM_YMIN = int(KINGDOM_CORNER[1] * (self.length / 2))
         self.KINGDOM_YMAX = int(self.KINGDOM_YMIN + (self.length / 2))
-        print(x_mean, y_mean)
+
+        self.KINGDOM_EXTREME = (KINGDOM_CORNER[0] * self.length, KINGDOM_CORNER[1] * self.height)
+
+        print(f"ext: {self.KINGDOM_EXTREME}")
+        self.make_islands()
+        self.resources_ordered = {}
 
         self.make_pois()
     
@@ -174,13 +214,17 @@ class CombinedWorldState:
             (xn,yn) = stack.pop()
             
             if not self.is_traversable((xn, yn)):
-                self.island_ids[(xn,yn)] = 0
-
+                obj = self.get_coord((xn, yn))
+                if obj is not None:
+                    if island_id >= 5:
+                        print(f'added large island to {(obj.x, obj.y)}')
+                        obj.island_ids.add(island_id)
 
             if (xn < 0 or yn < 0 or
                 xn >= self.length or yn >= self.height or
                 self.island_ids.get((xn, yn)) is not None or
                 not self.is_traversable((xn, yn))):
+
                 continue
 
             
@@ -218,7 +262,7 @@ class CombinedWorldState:
                         self.build_island(i, j, island_id = result)
                     else:
                         self.island_ids[(i,j)] = 0
-              
+        self.num_islands = result
 
 #  Driver Code
 
@@ -258,6 +302,7 @@ class CombinedWorldState:
         if self.empire is None:
             all_units = [obj for obj in self.object_coord.values() if issubclass(type(obj), Unit)]
             self.empire = [u for u in all_units if u.team == self.team_id]
+            self.empire = sorted(self.empire, key=lambda obj: obj.id)
         return self.empire
 
     def gatherCity(self):
@@ -265,7 +310,6 @@ class CombinedWorldState:
             all_buildings = [obj for obj in self.object_coord.values() if issubclass(type(obj), Building)]
             self.city = [b for b in all_buildings if b.team == self.team_id]
         return self.city
-
     
     def render(self):
         from render import TREE as COL_TREE, GOLD as COL_GOLD, NORM, teamcols
@@ -311,11 +355,8 @@ class CombinedWorldState:
                     print_string = print_string[:-1] + COL_GOLD + 'X'
                 print_string += str(self.island_ids[(x,y)])
 
-
             print_string += (NORM + '\n')
         print(print_string)
-
-
 
 def run(world_state, players, team_idx):
     NUMBER_SYSTEM = {}
@@ -333,16 +374,20 @@ def run(world_state, players, team_idx):
 
     middle_time = time.time()
 
-    print(middle_time - start_time)
+    print(f"mid: {middle_time - start_time}")
 
     empire = cws.gatherEmpire()
 
-    commands = [unit.execute(cws) for unit in empire]
+    unit_commands = [unit.execute(cws) for unit in empire]
+    building_commands = [bld.execute(cws) for bld in cws.gatherCity()]
     end_time = time.time()
 
-    print(end_time - middle_time)
+    print(f"end: {end_time - middle_time}")
 
     cws.render()
+    print(cws.players_raw)
 
-    return (commands)
+    reset_number_system()
+
+    return (unit_commands + building_commands)
     # Determine what the foliage is for unexplored tiles.

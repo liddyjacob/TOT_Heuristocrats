@@ -3,7 +3,6 @@ from ai.heuristocrats.constants import *
 
 FOLIAGE_STATE = None
 
-
 class FoliageRegisry:
     def __init__(self):
         self.fstate = []

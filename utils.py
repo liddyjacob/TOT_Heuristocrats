@@ -6,11 +6,8 @@ from ai.heuristocrats.resources import Unknown
 # Given size of Matrix
 import heapq as heap
 import math
-
-def sign(x):
-    if x == 0: 
-        return 0
-    return int((abs(x) / x))
+import random
+from random import shuffle
 
 def reconstruct_path(cameFrom, current):
     total_path = [current]
@@ -18,7 +15,6 @@ def reconstruct_path(cameFrom, current):
         current = cameFrom[current]
         total_path.append(current)
     return total_path
-
 
 def get_path_a_star(cws, start, end):
     openSet = set()
@@ -38,27 +34,62 @@ def get_path_a_star(cws, start, end):
 
         openSet.remove(curr)
 
-        xsign = sign(end[0] - curr[0])
-        ysign = sign(end[1] - curr[1])
-
-        moves = [(curr[0] + xsign, curr[1] + ysign)]
+        moves = []
 
         shuffled_diff = [-1,0,1]
         shuffle(shuffled_diff)
 
-        for yk in shuffled_diff:
-            if yk != ysign:
-                moves.append((curr[0] + xsign, curr[1] + yk))
+        for xk in shuffled_diff: 
+            for yk in shuffled_diff:
+                if xk != 0 or  yk != 0:
+                    moves.append((curr[0] + xk, curr[1] + yk))
 
-        for xk in shuffled_diff:
-            if xk != xsign:
-                moves.append((curr[0] + xk,curr[1] +  ysign))   
+
+        for neighbor in moves:
+            if neighbor != end and not cws.is_traversable(neighbor):
+                tentative_gScore = gScore[curr] + 100000
+            else:
+                tentative_gScore = gScore[curr] + 1 
+            
+            if gScore.get(neighbor) is None:
+                gScore[neighbor] = math.inf
+            if tentative_gScore < gScore[neighbor]:
+                cameFrom[neighbor] = curr
+                gScore[neighbor] = tentative_gScore
+                heur_score = max(abs(neighbor[0] - end[0]), abs(neighbor[1] - end[1]))
+                fScore[neighbor] = tentative_gScore + heur_score
+                if neighbor not in openSet:
+                    openSet.add(neighbor)
+
+
+
+def get_path_a_star_any(cws, start, goal_type):
+    openSet = set()
+    openSet.add(start)
+
+    cameFrom = {}
+    gScore = {}
+    gScore[start] = 0
+
+    fScore = {}
+    fScore[start] = (1)
+
+    while len(openSet) != 0:
+        curr = min(openSet, key=fScore.get)
+        if type(cws.get_coord(curr)) == goal_type:
+            return reconstruct_path(cameFrom, curr)
+
+        openSet.remove(curr)
+
+        moves = []
+
+        shuffled_diff = [-1,0,1]
+        shuffle(shuffled_diff)
 
         for xk in shuffled_diff: 
             for yk in shuffled_diff:
-                if xk != xsign and yk != ysign:
-                    if xk != 0 or  yk != 0:
-                        moves.append((curr[0] + xk, curr[1] + yk))
+                if xk != 0 or  yk != 0:
+                    moves.append((curr[0] + xk, curr[1] + yk))
 
 
         for neighbor in moves:
@@ -72,72 +103,10 @@ def get_path_a_star(cws, start, end):
             if tentative_gScore < gScore[neighbor]:
                 cameFrom[neighbor] = curr
                 gScore[neighbor] = tentative_gScore
-                heur_score = min(abs(neighbor[0] - end[0]), abs(neighbor[1] - end[1]))
+                heur_score = max(abs(neighbor[0] - 48), abs(neighbor[1] - 48))
                 fScore[neighbor] = tentative_gScore + heur_score
                 if neighbor not in openSet:
                     openSet.add(neighbor)
-
-
-
-
-
-from random import shuffle
-def get_path(cws, start, end):
-
-    queue = [[start]]
-    if start == end:
-        return None
-
-    visited = set()
-    while len(queue) > 0:
-        #print(queue)
-        path = queue.pop()
-        if end == path[-1]:
-            return path
-
-        if path[-1] not in visited:
-            curr = path[-1]
-            # Not traversable, and not the base unit. Do not 
-            if (not cws.is_traversable(curr)):
-                continue
-
-            if curr in visited:
-                continue
-            
-            # this is a valid path and we have visited it.
-            visited.add(curr)
-
-            xsign = sign(end[0] - curr[0])
-            ysign = sign(end[1] - curr[1])
-
-            moves = [(xsign, ysign)]
-
-
-            shuffled_diff = [-1,0,1]
-            shuffle(shuffled_diff)
-
-            for yk in shuffled_diff:
-                if yk != ysign:
-                    moves.append((xsign, yk))
-
-            for xk in shuffled_diff:
-                if xk != xsign:
-                    moves.append((xk, ysign))   
-
-            for xk in shuffled_diff: 
-                for yk in shuffled_diff:
-                    if xk != xsign and yk != ysign:
-                        if xk != 0 or  yk != 0:
-                            moves.append((xk, yk))
-
-            for m in moves:
-                if cws.is_traversable((curr[0]+m[0],curr[1]+m[1])):
-                    new_path = list(path)
-                    new_path.append((curr[0]+m[0],curr[1]+m[1]))
-                    queue.append(new_path)
-
-    return None
-
 
 
 def valid_coordinate(x,y):

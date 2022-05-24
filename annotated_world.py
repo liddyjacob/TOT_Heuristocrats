@@ -34,6 +34,8 @@ class FoliageRegisry:
 
         for (x,y) in coord_set:
             if type(crw.get_coord((x,y))) == Unknown:
+                fstate.x = x
+                fstate.y = y 
                 crw.set_coord((x,y), fstate)
 
     # update crw to include new plants

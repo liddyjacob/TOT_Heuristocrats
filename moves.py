@@ -20,7 +20,19 @@ class Build:
         return {"id": unit.id, "command":self.rep, "arg":self.direction}
 
     def __str__(self):
-        return f"build:{self.rep} - {self.direction}"    
+        return f"build: {self.rep} - {self.direction}"    
+
+class Attack:
+    def __init__(self, target):
+        self.target = target
+        self.target_id = target.id
+
+    def apply(self, unit):
+        return {"id": unit.id, "command":'k', "arg":self.target_id}
+
+    def __str__(self):
+        return f"attacking: {self.target} - {self.target_id}"            
+
 
 
 class Repair:
@@ -33,3 +45,13 @@ class Repair:
 
     def __str__(self):
         return f"repair: {self.bld_id} at {self.bld.x}, {self.bld.y}"    
+
+class Produce:
+    def __init__(self):
+        pass
+    
+    def apply(self, bld):
+        return {"id": bld.id, "command":'p', "arg": None}
+
+    def __str__(self):
+        return f"Produced"    

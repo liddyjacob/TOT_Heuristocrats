@@ -1,3 +1,4 @@
+
 class Building:
     def __init__(self, obj):
         self.team = obj["team"]
@@ -6,11 +7,12 @@ class Building:
         self.move_stack = []
         self.id = obj['id']
         self.hp = obj['hp']
-        print(obj)
+        self.island_ids = set()
 
-    # for updating health and stuff
-    def update(self, obj):
-        pass
+    def execute(self, cws):
+        from ai.heuristocrats.moves import Produce
+
+        return Produce().apply(self)
 
 class Townhall(Building):
     def __init__(self, obj):
