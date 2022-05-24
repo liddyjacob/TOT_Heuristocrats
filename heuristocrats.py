@@ -7,7 +7,7 @@ from ai.shitutils import get_tiles, path_to_coord
 from enum import Enum
 from engine import SKEL_TICKS
 from render import render
-from ai.heuristocrats.units import Villager, Archer, Infantry, Calvary, Skeleton, Unit
+from ai.heuristocrats.units import Villager, Archer, Infantry, Calvary, Skeleton, Unit, NUMBER_SYSTEM
 from ai.heuristocrats.buildings import Townhall, Barracks, Range, Stable, House, Building
 from ai.heuristocrats.resources import MapObj, Resource, Tree, Gold,  Unknown, Unoccupied, MapObj
 from ai.heuristocrats.constants import *
@@ -100,6 +100,8 @@ class CombinedWorldState:
         self.team_id = team_idx
         self.height = len(self.world_state_raw)
         self.length = len(self.world_state_raw[0])
+        self.empire = None
+        self.city = None
         
         # Associate coords with unique ids
         self.object_coord = {}
@@ -112,7 +114,7 @@ class CombinedWorldState:
             obj['y'] = y
 
         self.object_coord[(x,y)] = initializeObject(obj)
-        return self.object_coord[(x,y)] 
+        return self.object_coord[(x,y)]
 
     def get_coord(self, pair):
         x = pair[0]
@@ -125,6 +127,9 @@ class CombinedWorldState:
         y = pair[1]
 
         obj = self.object_coord.get((x,y))
+
+        if obj in self.gatherEmpire():
+            return True
 
         # wonky system workout
         return (type(obj) == Unoccupied or type(obj) == Unknown)
@@ -148,10 +153,10 @@ class CombinedWorldState:
 
 
         KINGDOM_CORNER = (int((x_mean / (self.length / 2))), int(y_mean / (self.length / 2)) )
-        self.KINGDOM_XMIN = KINGDOM_CORNER[0] * (self.length / 2)
-        self.KINGDOM_XMAX = self.KINGDOM_XMIN + (self.length / 2)
-        self.KINGDOM_YMIN = KINGDOM_CORNER[1] * (self.length / 2)
-        self.KINGDOM_YMAX = self.KINGDOM_YMIN + (self.length / 2)
+        self.KINGDOM_XMIN = int(KINGDOM_CORNER[0] * (self.length / 2))
+        self.KINGDOM_XMAX = int(self.KINGDOM_XMIN + (self.length / 2))
+        self.KINGDOM_YMIN = int(KINGDOM_CORNER[1] * (self.length / 2))
+        self.KINGDOM_YMAX = int(self.KINGDOM_YMIN + (self.length / 2))
         print(x_mean, y_mean)
 
         self.make_pois()
@@ -218,10 +223,22 @@ class CombinedWorldState:
 #  Driver Code
 
     def _make_pois_fexplore(self):
-        point_map = self.point_maps['fexplore']
+        self.fexplore_waypoints = []         
 
-        self.pois.add(max(point_map, key=point_map.get))
-        print(self.pois)
+        for x in range(self.KINGDOM_XMIN, self.KINGDOM_XMAX):
+            for y in range(self.KINGDOM_YMIN, self.KINGDOM_YMAX):
+                if 0 == (x % 8) and 0 == (y % 8):
+
+                    if type(self.get_coord((x,y))) == Unknown:
+                        self.fexplore_waypoints.append((x,y))
+                        self.pois.add((x,y))
+
+
+    def percent_uncovered_f(self):
+
+        p =  len([obj for obj in self.object_coord.values() if type(obj) != Unknown]) / (self.length * self.height)
+        print('UNC:', p)
+        return(p)
 
     def _make_pois_empire_corners(self):
 
@@ -230,67 +247,25 @@ class CombinedWorldState:
         self.pois.add((self.length - 6,self.height - 6))
         self.pois.add((self.length - 6,5))
 
-    # this is going to be a major slow down
-    def _run_point_masks(self):
-        self.masked_point_map = {}
-        self.masks = {}
-        self.point_maps = {}
-
-        for key in self.point_map_types:
-            self.masked_point_map[key] = {}
-            self.masks[key] = {}
-            self.point_maps[key] = {}
-
-            for x in range(self.length):
-                for y in range(self.height):
-                    m_lamb = self.mask_lambdas[key]
-
-                    obj = self.get_coord((x,y))
-                    p_lam = self.point_map_lambdas[key]
-                    self.point_maps[key][(x,y)] = p_lam(obj) * m_lamb(x,y)
-
-            num_runs = self.agg_executions[key]
-            self.point_maps[key] = multi_aggregate(self.point_maps[key], num_runs)
-
     # POINTS OF INTEREST
     def make_pois(self):
             # make a map for every type of point of interest and mask ( messy but a real time saver )
-            self.point_map_types = ['fexplore']
-
-            self.mask_lambdas = {
-                'fexplore': lambda x, y: 
-                    math.sin((math.pi * (x) / (self.length)) * (1 - math.sin((math.pi *y) / (self.height)))) if 
-                    (self.KINGDOM_XMIN <= x < self.KINGDOM_XMAX) and (self.KINGDOM_YMIN <= y < self.KINGDOM_YMAX) else
-                    0,
-                'explore': lambda x, y: math.sqrt(math.sqrt(
-                    (abs(x - (self.length/2)) + (self.length/2)) * (abs(y - (self.height/2)) + (self.height /2))
-                    ) / (self.length + self.height)),
-            }
-
-            self.point_map_lambdas = {
-                'fexplore': lambda obj: int(type(obj) == Unknown),
-                'explore': lambda obj: 0 if not issubclass(type(obj), MapObj) else int(obj.theoretical) 
-            }
-
-            self.agg_executions = {
-                'fexplore': 4,
-                'explore': 6
-            }
-
             self.pois = set()
-
-            self._run_point_masks()
             self._make_pois_fexplore()
             self._make_pois_empire_corners()
 
-
     def gatherEmpire(self):
-        all_units = [obj for obj in self.object_coord.values() if issubclass(type(obj), Unit)]
-        return [u for u in all_units if u.team == self.team_id]
+        if self.empire is None:
+            all_units = [obj for obj in self.object_coord.values() if issubclass(type(obj), Unit)]
+            self.empire = [u for u in all_units if u.team == self.team_id]
+        return self.empire
 
     def gatherCity(self):
-        all_buildings = [obj for obj in self.object_coord.values() if issubclass(type(obj), Building)]
-        return [b for b in all_buildings if b.team == self.team_id]
+        if self.city is None:
+            all_buildings = [obj for obj in self.object_coord.values() if issubclass(type(obj), Building)]
+            self.city = [b for b in all_buildings if b.team == self.team_id]
+        return self.city
+
     
     def render(self):
         from render import TREE as COL_TREE, GOLD as COL_GOLD, NORM, teamcols
@@ -343,6 +318,7 @@ class CombinedWorldState:
 
 
 def run(world_state, players, team_idx):
+    NUMBER_SYSTEM = {}
 
     start_time = time.time()
 
@@ -351,7 +327,6 @@ def run(world_state, players, team_idx):
 
     # Always iterate over the map ONCE at the beginning to update units
     # and stuff.
-
     iterate_over_map(cws)
     cws.post_processing_steps()
     #print(REGISTRY)
@@ -363,8 +338,11 @@ def run(world_state, players, team_idx):
     empire = cws.gatherEmpire()
 
     commands = [unit.execute(cws) for unit in empire]
+    end_time = time.time()
 
+    print(end_time - middle_time)
 
     cws.render()
+
     return (commands)
     # Determine what the foliage is for unexplored tiles.
