@@ -1,7 +1,5 @@
-from ast import Pass
-from ai.heuristocrats.foliage_finder import FoliageRegisry
 from ai.heuristocrats.constants import HWSIZE, WSIZE
-from ai.heuristocrats.resources import Resource, Other
+from ai.heuristocrats.resources import Resource, Unknown, Unoccupied
 
 class FoliageRegisry:
     def __init__(self, size = HWSIZE):
@@ -20,8 +18,8 @@ class FoliageRegisry:
             if issubclass(type(obj), Resource):
                 self.registry[(x,y)] = type(obj)(None, theoretical=True)
                 return
-            if obj != Other.UNKNOWN:
-                self.registry[(x,y)] = Other.UNOCCUPIED
+            if type(obj) != Unknown:
+                self.registry[(x,y)] = Unoccupied(theoretical=True)
 
     def get_reflected_coords(self, x,y):
         return [(x,y), (WSIZE - x - 1, y), (WSIZE - x - 1, WSIZE - y - 1), (x, WSIZE - y - 1)]
@@ -35,7 +33,7 @@ class FoliageRegisry:
             return
 
         for (x,y) in coord_set:
-            if crw.get_coord((x,y)) == Other.UNKNOWN:
+            if type(crw.get_coord((x,y))) == Unknown:
                 crw.set_coord((x,y), fstate)
 
     # update crw to include new plants

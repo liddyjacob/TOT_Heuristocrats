@@ -1,6 +1,10 @@
 class Building:
     def __init__(self, obj):
         self.team = obj["team"]
+        self.x = obj['x']
+        self.y = obj['y']
+        self.move_stack = []
+        self.id = obj['id']
 
     # for updating health and stuff
     def update(self, obj):

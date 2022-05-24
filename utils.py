@@ -2,84 +2,6 @@ from copy import deepcopy
 from ai.heuristocrats.constants import * 
 from ai.shitutils import coord_to_int
 
-def generate_exploration_map(mapdata):
-    exploration_map = [[0 for r in row] for row in mapdata]
-    for x in range(WSIZE):
-        for y in range(WSIZE):
-            if mapdata[x][y] is None:
-                exploration_map[x][y] = 1
-
-            if mapdata[x][y] == 'u':
-                exploration_map[x][y] = 1
-
-    return exploration_map
-
-
-# Python3 program for the above approach
- 
-# DFS Traversal to find the count of
-# island surrounded by water
-def dfs(matrix, visited, x, y, n, m, island_id = 0):
-    
-    # If the land is already visited
-    # or there is no land or the
-    # coordinates gone out of matrix
-    # break function as there
-    # will be no islands
-    stack = [(x,y)]
-
-    while stack:
-        (xn,yn) = stack.pop()
-        if (xn < 0 or yn < 0 or
-            xn >= n or yn >= m or
-            visited[xn][yn] != 0 or
-            matrix[xn][yn] == 0):
-            continue
-        
-        visited[xn][yn] = island_id
-        stack.append((xn, yn + 1))
-        stack.append((xn, yn - 1))
-        stack.append((xn - 1, yn))
-        stack.append((xn + 1, yn))
-        stack.append((xn + 1, yn + 1))
-        stack.append((xn + 1, yn - 1))
-        stack.append((xn - 1, yn + 1))
-        stack.append((xn - 1, yn - 1))
-
- 
-# Function that counts the closed island
-def getClosedIslands(matrix, n, m):
-     
-    # Create boolean 2D visited matrix
-    # to keep track of visited cell
-  
-    # Initially all elements are
-    # unvisited.
-    visited = [[0 for i in range(m)]
-                      for j in range(n)]
- 
-    # To stores number of closed islands
-    result = 0
- 
-    for i in range(n):
-        for j in range(m):
-             
-            # If the land not visited
-            # then there will be atleast
-            # one closed island
-            if (visited[i][j] == 0 and
-                 matrix[i][j] == 1):
-                result += 1
-                
-                # Mark all lands associated
-                # with island visited.
-                dfs(matrix, visited, i, j, n, m, island_id = result)
- 
-    # Return the final count
-    return visited
- 
-#  Driver Code
- 
 # Given size of Matrix
  
 # This code is contributed by rag2127
@@ -108,28 +30,16 @@ teamcols = {
 }
 
 
-def cust_render(world_state):
-    # render the world
-    for y in range(len(world_state)):
-        for x in range(len(world_state[y])):
-            if world_state[x][y] is not None:
-                if(world_state[x][y] == "u"):
-                    print(" ", end="")
-                elif type(world_state[x][y]) == str:
-                    print(world_state[x][y], end="")
-                elif(world_state[x][y]["type"] == "t"):
-                    print(TREE + world_state[x][y]["type"], end="")
-                elif(world_state[x][y]["type"] == "g"):
-                    print(GOLD + world_state[x][y]["type"], end="")
-                elif(is_building(world_state[x][y]["type"]) and world_state[x][y]["constructed"]):
-                    print(teamcols[world_state[x][y]["team"]] + world_state[x][y]["type"].upper(), end="")
-                else:
-                    print(teamcols[world_state[x][y]["team"]] + world_state[x][y]["type"], end="")
-            else:
-                print(NORM + " ", end="")
-            #print('  ', end='')
-        print(NORM)
 
+
+# Tries moving in a direction six units at a time
+#def fast_path(cws, start, end, csize = 6):
+#    if start == end:
+#        return None
+
+#    while MAX_ITER < 
+
+    
 
 from random import shuffle
 def get_path(cws, start, end):
@@ -164,3 +74,37 @@ def get_path(cws, start, end):
                     new_path = list(path)
                     new_path.append()
 
+
+def valid_coordinate(x,y):
+    return ((x >= 0) and x < WSIZE) and ((y >= 0) and y < WSIZE)
+
+# get the nearby coordinates of x and y, and enforce them to 
+# pass valid_coordinates(x,y)
+# 
+def get_nearby_coords(x,y):
+    nearby_coords = [(x-1,y), (x, y-1), (x+1, y), (x, y+1)] 
+    valid_coords = [(x,y) for (x,y) in nearby_coords if valid_coordinate(x,y)]
+    
+    return (valid_coords)
+
+def aggregate_weight(exp_weight_map):
+    base_weights = deepcopy(exp_weight_map)
+
+
+    for x in range(WSIZE):
+        for y in range(WSIZE):
+            # add up nearby coordinatrs
+            neighbors = get_nearby_coords(x,y)
+            for (xn, yn) in neighbors:
+                exp_weight_map[(x, y)] = exp_weight_map[(x, y)] + base_weights[(xn, yn)]
+
+    return exp_weight_map
+
+
+def multi_aggregate(exp_weight_map, num_aggregates):
+    exp_weight_map = deepcopy(exp_weight_map)
+
+    for i in range(num_aggregates):
+        exp_weight_map = aggregate_weight(exp_weight_map)
+    
+    return exp_weight_map

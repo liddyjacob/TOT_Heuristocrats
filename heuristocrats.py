@@ -2,17 +2,20 @@ from asyncio.streams import FlowControlMixin
 from glob import glob
 from pickle import UNICODE
 from tkinter.messagebox import NO
+from tracemalloc import start
 from ai.shitutils import get_tiles, path_to_coord
 from enum import Enum
+from engine import SKEL_TICKS
 from render import render
 from ai.heuristocrats.units import Villager, Archer, Infantry, Calvary, Skeleton, Unit
 from ai.heuristocrats.buildings import Townhall, Barracks, Range, Stable, House, Building
-from ai.heuristocrats.resources import Resource, Tree, Gold, Other
+from ai.heuristocrats.resources import MapObj, Resource, Tree, Gold,  Unknown, Unoccupied, MapObj
 from ai.heuristocrats.constants import *
-from ai.heuristocrats.foliage_finder import initialize_foliage_state, reflect
-from ai.heuristocrats.exploration import initialize_exp_weight_map, multi_aggregate, exp_render, find_target_on_heatmap
-from ai.heuristocrats.utils import generate_exploration_map, getClosedIslands, printAsIs, cust_render
+from ai.heuristocrats.utils import multi_aggregate
 from ai.heuristocrats.annotated_world import ANNO_WORLD
+import time
+import statistics
+import math
 
 # notes
 """
@@ -23,10 +26,10 @@ Upgrade units policy: examine cost / power for one unit, then cost / power to up
 # todo make this create an instance of each object
 def initializeObject(obj):
     if obj is None:
-        return 
+        return Unoccupied()
 
     if obj == 'u':
-        return Other.UNKNOWN
+        return Unknown()
 
     if obj["type"] == 't':
         return Tree(obj)
@@ -66,72 +69,28 @@ def initializeObject(obj):
 
     quit(f"ERROR REGISTERING OBJECT. UNKNOWN TYPE: {obj['type']}")
 
-class objRegistry:
-    def __init__(self):
-        self.registry = {}
-        self.not_lookup = set()
-
-    def clearLookupHistory(self):
-        self.not_lookup = set(self.registry.keys())
-
-    def registerLookup(self, id):
-        if id in self.not_lookup:
-            self.not_lookup.remove(id)
-
-    def lookup(self, id, register_lookup = False):
-        # used to determine if an object has died.
-        if register_lookup:
-            self.registerLookup(id)
-        return self.registry.get(id)
-
-    # Deregester all the unnaccounted members
-    def deregisterUnaccounted(self):
-        for key in self.not_lookup:
-            obj = self.registry[key]
-            if issubclass(type(obj), Unit):
-                obj.kill()
-
-        [self.registry.pop(key) for key in self.not_lookup]
-
-        if len(self.not_lookup) !=0:
-            print("Deregistered Something!") 
-        self.not_lookup = set()
-
-    # Register an object and wrap it in my systems
-    def register(self, object):
-        self.registry[object["id"]] = initializeObject(object)
-        return self.registry[object["id"]]
-
-    def dumpObjects(self):
-        return self.registry.values()
-
-    def __str__(self):
-        rval = ""
-        for key, val in self.registry.items():
-            rval += f"  {key}: {val}\n"
-
-        return rval
-
-REGISTRY = objRegistry()
-
 def name():
     return "Commrads"
 
 # iterate over the map once to avoid redundancy of things that 
 # require iteraton.
 def iterate_over_map(cws):
-    global REGISTRY
-    REGISTRY.clearLookupHistory()
-
     for x in range(cws.length):
         for y in range(cws.height):
             obj = cws.identify_and_associate(x,y)
             # update the 'annotated world'
             ANNO_WORLD.update(x,y,obj)
 
-    REGISTRY.deregisterUnaccounted()
     ANNO_WORLD.modify_world_state(cws)
             # S
+
+class POI(Enum):
+    FOL_EXPLORE = 1,
+    UNKNOWN_EXPLORE = 2,
+    ENEMY_BUILDINGS = 3,
+    ENEMY_VILLAGER_CLUSTERS = 4,
+    CORNERS = 5
+
 
 # Use this to force the world state to use my interfaces
 class CombinedWorldState:
@@ -143,87 +102,194 @@ class CombinedWorldState:
         self.length = len(self.world_state_raw[0])
         
         # Associate coords with unique ids
-        self.object_id_coord = {}
+        self.object_coord = {}
 
     def identify_and_associate(self,x,y):
-        global REGISTRY
-
-        # WARNING THIS REMOVES INFORMATION FROM THE MAP
-        if self.world_state_raw[x][y] is None:
-            self.object_id_coord[(x,y)] = Other.UNOCCUPIED
-            return Other.UNOCCUPIED
-
-        # I NEED TO DIFFERENTIATE BETWEEN UNVISITED AND UNOCCUPIED.
-        if self.world_state_raw[x][y] == 'u':
-            self.object_id_coord[(x,y)] = Other.UNKNOWN
-            return Other.UNKNOWN
-
         obj = self.world_state_raw[x][y]
-        obj_id = obj["id"]
 
-        obj['x'] = x
-        obj['y'] = y
+        if type(obj) == dict:
+            obj['x'] = x
+            obj['y'] = y
 
-        wrapped_obj = None
-        if REGISTRY.lookup(obj_id, register_lookup=True) is None:
-            wrapped_obj = REGISTRY.register(obj)
-            self.object_id_coord[(x,y)] = obj_id
-        else:
-            wrapped_obj = REGISTRY.lookup(obj_id)
-            self.object_id_coord[(x,y)] = obj_id
-
-        objt = type(wrapped_obj)
-        if issubclass(objt, Unit) or issubclass(objt, Building):
-            wrapped_obj.update(obj)
-
-        return wrapped_obj
+        self.object_coord[(x,y)] = initializeObject(obj)
+        return self.object_coord[(x,y)] 
 
     def get_coord(self, pair):
         x = pair[0]
         y = pair[1]
 
-        obj_id = self.object_id_coord[(x,y)]
-
-        # wonky system workout
-        if obj_id == Other.UNOCCUPIED or obj_id == Other.UNKNOWN:
-            return obj_id 
-
-        if obj_id is not None:
-            return REGISTRY.lookup(obj_id)
-        
-        return None
+        return self.object_coord[(x,y)]
 
     def is_traversable(self, pair):
         x = pair[0]
         y = pair[1]
 
-        obj_id = self.object_id_coord[(x,y)]
+        obj = self.object_coord.get((x,y))
 
         # wonky system workout
-        return (obj_id == Other.UNOCCUPIED or obj_id == Other.UNKNOWN or obj_id is None)
+        return (type(obj) == Unoccupied or type(obj) == Unknown)
 
 
     # set the coordinate to the new 
     def set_coord(self, pair, wrapped_object):
         x = pair[0]
         y = pair[1]
-
-
-        if wrapped_object == Other.UNKNOWN or wrapped_object == Other.UNOCCUPIED:
-            self.object_id_coord[(x,y)] = wrapped_object
-            return
         
-        self.object_id_coord[(x,y)] = wrapped_object.id
-        REGISTRY.registry[wrapped_object.id] = wrapped_object
+        self.object_coord[(x,y)] = wrapped_object
         # TODO set the wrapped object in registry.
         # id is wrapped_object.id
 
+    def post_processing_steps(self):
+        self.make_islands()
+
+        avg_empire_location = self.gatherEmpire() + self.gatherCity()
+        x_mean = statistics.mean([obj.x for obj in avg_empire_location])
+        y_mean = statistics.mean([obj.y for obj in avg_empire_location])
+
+
+        KINGDOM_CORNER = (int((x_mean / (self.length / 2))), int(y_mean / (self.length / 2)) )
+        self.KINGDOM_XMIN = KINGDOM_CORNER[0] * (self.length / 2)
+        self.KINGDOM_XMAX = self.KINGDOM_XMIN + (self.length / 2)
+        self.KINGDOM_YMIN = KINGDOM_CORNER[1] * (self.length / 2)
+        self.KINGDOM_YMAX = self.KINGDOM_YMIN + (self.length / 2)
+        print(x_mean, y_mean)
+
+        self.make_pois()
+    
+    def build_island(self, x, y, island_id = 0):
+
+        # If the land is already visited
+        # or there is no land or the
+        # coordinates gone out of matrix
+        # break function as there
+        # will be no islands
+        stack = [(x,y)]
+
+        while stack:
+            (xn,yn) = stack.pop()
+            
+            if not self.is_traversable((xn, yn)):
+                self.island_ids[(xn,yn)] = 0
+
+
+            if (xn < 0 or yn < 0 or
+                xn >= self.length or yn >= self.height or
+                self.island_ids.get((xn, yn)) is not None or
+                not self.is_traversable((xn, yn))):
+                continue
+
+            
+            self.island_ids[(xn,yn)] = island_id
+            stack.append((xn, yn + 1))
+            stack.append((xn, yn - 1))
+            stack.append((xn - 1, yn))
+            stack.append((xn + 1, yn))
+            stack.append((xn + 1, yn + 1))
+            stack.append((xn + 1, yn - 1))
+            stack.append((xn - 1, yn + 1))
+            stack.append((xn - 1, yn - 1))
+
+    def make_islands(self):
+    # unvisited.
+        self.island_ids = {}
+
+    
+        # To stores number of closed islands
+        result = 0
+    
+        for i in range(self.length):
+            for j in range(self.height):
+                
+                # If the land not visited
+                # then there will be atleast
+                # one closed island
+                if (self.island_ids.get((i,j)) is None):
+                    if self.is_traversable((i, j)):
+
+                        result += 1
+                    
+                        # Mark all lands associated
+                        # with island visited.
+                        self.build_island(i, j, island_id = result)
+                    else:
+                        self.island_ids[(i,j)] = 0
+              
+
+#  Driver Code
+
+    def _make_pois_fexplore(self):
+        point_map = self.point_maps['fexplore']
+
+        self.pois.add(max(point_map, key=point_map.get))
+        print(self.pois)
+
+    def _make_pois_empire_corners(self):
+
+        self.pois.add((5,5))
+        self.pois.add((5,self.height - 6))
+        self.pois.add((self.length - 6,self.height - 6))
+        self.pois.add((self.length - 6,5))
+
+    # this is going to be a major slow down
+    def _run_point_masks(self):
+        self.masked_point_map = {}
+        self.masks = {}
+        self.point_maps = {}
+
+        for key in self.point_map_types:
+            self.masked_point_map[key] = {}
+            self.masks[key] = {}
+            self.point_maps[key] = {}
+
+            for x in range(self.length):
+                for y in range(self.height):
+                    m_lamb = self.mask_lambdas[key]
+
+                    obj = self.get_coord((x,y))
+                    p_lam = self.point_map_lambdas[key]
+                    self.point_maps[key][(x,y)] = p_lam(obj) * m_lamb(x,y)
+
+            num_runs = self.agg_executions[key]
+            self.point_maps[key] = multi_aggregate(self.point_maps[key], num_runs)
+
+    # POINTS OF INTEREST
+    def make_pois(self):
+            # make a map for every type of point of interest and mask ( messy but a real time saver )
+            self.point_map_types = ['fexplore']
+
+            self.mask_lambdas = {
+                'fexplore': lambda x, y: 
+                    math.sin((math.pi * (x) / (self.length)) * (1 - math.sin((math.pi *y) / (self.height)))) if 
+                    (self.KINGDOM_XMIN <= x < self.KINGDOM_XMAX) and (self.KINGDOM_YMIN <= y < self.KINGDOM_YMAX) else
+                    0,
+                'explore': lambda x, y: math.sqrt(math.sqrt(
+                    (abs(x - (self.length/2)) + (self.length/2)) * (abs(y - (self.height/2)) + (self.height /2))
+                    ) / (self.length + self.height)),
+            }
+
+            self.point_map_lambdas = {
+                'fexplore': lambda obj: int(type(obj) == Unknown),
+                'explore': lambda obj: 0 if not issubclass(type(obj), MapObj) else int(obj.theoretical) 
+            }
+
+            self.agg_executions = {
+                'fexplore': 4,
+                'explore': 6
+            }
+
+            self.pois = set()
+
+            self._run_point_masks()
+            self._make_pois_fexplore()
+            self._make_pois_empire_corners()
+
+
     def gatherEmpire(self):
-        all_units = [obj for obj in REGISTRY.dumpObjects() if issubclass(type(obj), Unit)]
+        all_units = [obj for obj in self.object_coord.values() if issubclass(type(obj), Unit)]
         return [u for u in all_units if u.team == self.team_id]
 
     def gatherCity(self):
-        all_buildings = [obj for obj in REGISTRY.dumpObjects() if issubclass(type(obj), Building)]
+        all_buildings = [obj for obj in self.object_coord.values() if issubclass(type(obj), Building)]
         return [b for b in all_buildings if b.team == self.team_id]
     
     def render(self):
@@ -234,32 +300,42 @@ class CombinedWorldState:
             for x in range(self.height):
                 obj = self.get_coord((x, y))
 
-                if obj == Other.UNKNOWN:
-                    print_string += NORM + "?."
-                if obj == Other.UNOCCUPIED:
-                    print_string += NORM + " ."
                 if issubclass(type(obj), Unit):
                     t = obj.type()[0]
                     color = teamcols[obj.team]
                     print_string+= color + t + '.'
-                if issubclass(type(obj), Resource):
+                if issubclass(type(obj), MapObj):
                     color = ''
                     char = 'g'
+
+                    extra = '.'
+                    if obj.theoretical:
+                        extra = '*'
+
                     if type(obj) == Tree:
                         color = COL_TREE
                         char = 't'
                     if type(obj) == Gold:
                         color = COL_GOLD
                         char = 'g'
+                    if type(obj) == Unknown:
+                        color = NORM
+                        char = '?'
+                        extra = '?'
 
-                    extra = '.'
-                    if obj.theoretical:
-                        extra = '*'
+                    if type(obj) == Unoccupied:
+                        color = NORM
+                        char = ' '
 
                     print_string += color + char + extra
 
                 if issubclass(type(obj), Building):
                     print_string += 'b '
+
+                if (x,y) in self.pois:
+                    print_string = print_string[:-1] + COL_GOLD + 'X'
+                print_string += str(self.island_ids[(x,y)])
+
 
             print_string += (NORM + '\n')
         print(print_string)
@@ -268,6 +344,8 @@ class CombinedWorldState:
 
 def run(world_state, players, team_idx):
 
+    start_time = time.time()
+
     Unit.our_kingdom = team_idx 
     cws = CombinedWorldState(world_state, players, team_idx)
 
@@ -275,11 +353,17 @@ def run(world_state, players, team_idx):
     # and stuff.
 
     iterate_over_map(cws)
+    cws.post_processing_steps()
     #print(REGISTRY)
+
+    middle_time = time.time()
+
+    print(middle_time - start_time)
 
     empire = cws.gatherEmpire()
 
     commands = [unit.execute(cws) for unit in empire]
+
 
     cws.render()
     return (commands)

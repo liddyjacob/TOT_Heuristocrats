@@ -1,6 +1,5 @@
 from threading import current_thread
-from ai.heuristocrats.behaviors import *
-from ai.heuristocrats.commander import KING
+from ai.heuristocrats.moves import Move
 
 # need a way to assign ids to units
 class TeamUnitRegistry:
@@ -49,26 +48,9 @@ class Unit:
         self.id = obj['id']
         self.team = obj['team']
 
-        if self.team == self.our_kingdom:
-            self.unit_number = TUR.register(self)
-            self.behavior_stack = []
-            self.behavior_stack.append(KING.order(self))
-
     def execute(self, cws):
-        # get an assignment from the king if there is no responibility
-        behavior = self.behavior_stack[-1]
-
-        if behavior.is_finished(self):
-            self.behavior_stack.pop()
-
-            if len(self.behavior_stack) == 0:
-                self.behavior_stack.append(KING.order(self))
-                
-            behavior = self.behavior_stack[-1]
-
-        # todo add behavior interruptions
-        turn = behavior.execute(self, cws)
-        return(turn)
+        self.turn = Move([1,0])
+        return(self.turn.apply(self))
 
     # todo update health and stuff
     def update(self, obj):
