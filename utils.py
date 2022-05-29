@@ -56,7 +56,7 @@ def get_path_a_star(cws, start, end):
             if tentative_gScore < gScore[neighbor]:
                 cameFrom[neighbor] = curr
                 gScore[neighbor] = tentative_gScore
-                heur_score = max(abs(neighbor[0] - end[0]), abs(neighbor[1] - end[1]))
+                heur_score = max(abs(neighbor[0] - end[0]), abs(neighbor[1] - end[1])) + random.random()/4
                 fScore[neighbor] = tentative_gScore + heur_score
                 if neighbor not in openSet:
                     openSet.add(neighbor)
@@ -142,3 +142,20 @@ def multi_aggregate(exp_weight_map, num_aggregates):
         exp_weight_map = aggregate_weight(exp_weight_map)
     
     return exp_weight_map
+
+
+# Get the gold per turn required to build units from 
+# every building as fast as possible.
+# Once we have villagers achiving the gold per turn amount,
+# we can build villagers as fast as possible
+def gold_per_turn_needed(cws):
+    # Build up extra gold:
+    gold_per_turn_needed = 1
+    for building in cws.gatherCity():
+        gold_per_turn_needed += building.producecost()[1] / building.turnsToProduce()
+
+    return gold_per_turn_needed
+
+def handler(signum, frame):
+   print('Did not finish in time: signum, frame')
+   raise Exception("end of time")

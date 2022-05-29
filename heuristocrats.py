@@ -73,14 +73,20 @@ def name():
 
 # iterate over the map once to avoid redundancy of things that 
 # require iteraton.
+
 def iterate_over_map(cws):
+    dp_tree_square = [[(0,0)] * 96 for _ in range(96)]
+    max_square = ((0,0),None, None)
     for x in range(cws.length):
         for y in range(cws.height):
             obj = cws.identify_and_associate(x,y)
+            cws.process(x,y)
+
             # update the 'annotated world'
             ANNO_WORLD.update(x,y,obj)
 
     ANNO_WORLD.modify_world_state(cws)
+    print(max_square)
             # S
 
 class POI(Enum):
@@ -101,6 +107,24 @@ class CombinedWorldState:
         self.length = len(self.world_state_raw[0])
         self.empire = None
         self.city = None
+        self.building_helper = {}
+        self.someone_building = False
+
+        # sorting is expensive, so we need markers to determine if we have done it
+        self.tc_sorted=False
+        self.tc_spots = []
+        self.training_sorted=False
+        self.training_spots = []
+        self.house_sorted=False
+        self.house_spots = []
+
+        self.fort_helper = {}
+        self.fort_info = [((0,0), None, None)]
+
+        self.resources_ordered = {}
+        # debug
+        self.tclc = None
+
 
         self.wood = players[team_idx]['wood']
         self.gold = players[team_idx]['gold']
@@ -134,34 +158,86 @@ class CombinedWorldState:
         obj = self.object_coord.get((x,y))
 
         # wonky system workout
-        return (type(obj) == Unoccupied or type(obj) == Unknown)
+        return (type(obj) == Unoccupied or type(obj) == Unknown) and not obj.travel_ban
+
+    # block a box from being travelled in: 
+    def block_box(self, loc, size):
+        for dx in range(size):
+            for dy in range(size):
+                if dx == 0 and dy ==0:
+                    continue
+                obj = self.get_coord((loc[0] - dx, loc[1] - dy))
+                obj.travel_ban = True
 
 
-    def get_corner_resource(self, typeof, island_id):
+    # LOCATIONS ARE ALWAYS WHERE VILLAGERS SHOULD GO.
+    # ALWAYS BOTTOM RIGHT. BRING THE VILLAGER THERE,
+    # THEN BUILD IN THE -1, -1 DIRECTION.
+    def get_tc_location(self):
+        if not self.tc_sorted:
+            self.tc_spots = sorted(self.tc_spots, key = lambda pair: max(abs(pair[0] - self.KINGDOM_EXTREME[0]),
+                abs(pair[1] - self.KINGDOM_EXTREME[1])), reverse=True)
+            self.tc_sorted = True
+
+        tc_location = self.tc_spots[-1]
+        return tc_location
+
+    # LOCATIONS ARE ALWAYS WHERE VILLAGERS SHOULD GO.
+    # ALWAYS BOTTOM RIGHT. BRING THE VILLAGER THERE,
+    # THEN BUILD IN THE -1, -1 DIRECTION.
+    def get_training_location(self):
+        if not self.training_sorted:
+            self.training_spots = sorted(self.training_spots, key = lambda pair: max(abs(pair[0] - self.KINGDOM_EXTREME[0]),
+                abs(pair[1] - self.KINGDOM_EXTREME[1])), reverse=True)
+            self.training_sorted = True
+
+        train_location = self.training_spots[-1]
+        self.training_spots.pop()
+        return train_location
+
+
+    # LOCATIONS ARE ALWAYS WHERE VILLAGERS SHOULD GO.
+    # ALWAYS BOTTOM RIGHT. BRING THE VILLAGER THERE,
+    # THEN BUILD IN THE -1, -1 DIRECTION.
+    def get_house_location(self):
+        if not self.house_sorted:
+            self.house_spots = sorted(self.house_spots, key = lambda pair: max(abs(pair[0] - self.KINGDOM_EXTREME[0]),
+                abs(pair[1] - self.KINGDOM_EXTREME[1])), reverse=True)
+            self.house_sorted = True
+
+        house_location = self.house_sorted[-1]
+        self.house_sorted.pop()
+        return house_location
+
+    def get_corner_resource(self, typeof, island_ids):
         # todo rewrite this
-        
-        t = time.time()
         if self.resources_ordered.get(typeof) is None:
             self.resources_ordered[typeof] = {}
-            for island_id in range(1, self.num_islands + 1):
-                self.resources_ordered[typeof][island_id] = []
-                all_x = [(obj.x, obj.y) for obj in self.object_coord.values() if type(obj) == typeof
-                    and island_id in obj.island_ids]
+            for i in range(self.num_islands):
+                self.resources_ordered[typeof][i + 1] = []
+                all_x = [(obj.x, obj.y) for obj in self.object_coord.values() 
+                    if type(obj) == typeof and (i + 1) in obj.island_ids]
                 
                 all_x = sorted(all_x, key = lambda pair: max(abs(pair[0] - self.KINGDOM_EXTREME[0]),
-                    abs(pair[1] - self.KINGDOM_EXTREME[1])), reverse=True)
+                abs(pair[1] - self.KINGDOM_EXTREME[1])), reverse=True)
                 
-                self.resources_ordered[typeof][island_id] = all_x
+                self.resources_ordered[typeof][i + 1] = all_x
 
-        if len(self.resources_ordered[typeof][island_id]):
-            rval = self.resources_ordered[typeof][island_id][-1]
-            self.resources_ordered[typeof][island_id].pop()
-            print(f"conrer calc time: {time.time() - t}")
+        for id in island_ids:
+            if len(self.resources_ordered[typeof][id]):
+                rval = self.resources_ordered[typeof][id][-1]
 
-            return rval
-        else:
-            print(f'requested but did not exist: {island_id}')
-            return None
+                if len(self.resources_ordered[typeof][id]) > 2:
+                    self.resources_ordered[typeof][id].pop()
+                    self.resources_ordered[typeof][id].pop()
+                if typeof == Tree:
+                    if len(self.resources_ordered[typeof][id]) > 2:
+                        self.resources_ordered[typeof][id].pop()
+                        self.resources_ordered[typeof][id].pop()
+                return rval
+
+        print(f'requested but did not exist: {typeof}')
+        return None
 
     # set the coordinate to the new 
     def set_coord(self, pair, wrapped_object):
@@ -182,6 +258,80 @@ class CombinedWorldState:
         else:
             return id
 
+    def process(self, x, y):
+        #' We need to do a few things:
+        #' (1) Find any squares of size 4x4 and 5x5. Any 5x5 spot is great for a town center,
+        #' and a 4x4 spot can be used for anything.
+        #' Also, 2x2 spots can be used for houses
+        #'
+        #' (2) Find any forests for size 5x5 or larger. These will become outposts.
+        self.building_helper[(x,y)] = 0
+        obj_at = self.get_coord((x,y))
+
+        if not self.is_traversable((x,y)):
+            self.building_helper[(x,y)] = 0
+        else:
+            if x == 0 or y == 0:
+                # 1x1 square
+                self.building_helper[(x,y)] = 1
+            else:
+                self.building_helper[(x,y)] = (min( 
+                    self.building_helper[(x-1,y)], 
+                    self.building_helper[(x,y-1)], 
+                    self.building_helper[(x-1,y-1)]
+                ) + 1)
+
+
+
+            # new max square found at x,y
+            #if self.building_helper[(x,y)] >= 5:
+            if self.building_helper[(x,y)] >= 4:
+                self.tc_spots.append((x,y))
+                self.training_spots.append((x,y))
+                self.house_spots.append((x,y))
+
+            #if self.building_helper[(x,y)] >= 3:
+
+        # TODO CHECK IF WE NEED TO FIND THIS VALUE?
+
+        if type(self.get_coord((x,y))) != Tree:
+            self.fort_helper[(x,y)] = (0,0)
+
+        else:
+            if x == 0 or y == 0:
+                self.fort_helper[(x,y)] = (1,1)
+            else:
+                # 
+                self.fort_helper[(x,y)] = (
+                min( 
+                    self.fort_helper[(x-1,y)][0], 
+                    self.fort_helper[(x,y-1)][0], 
+                    self.fort_helper[(x-1,y-1)][0]
+                ) + 1,
+                min( 
+                    self.fort_helper[(x-1,y)][1], 
+                    self.fort_helper[(x,y-1)][1], 
+                    self.fort_helper[(x-1,y-1)][1]
+                ) + 1)
+
+            # new max square found at x,y
+            if self.fort_helper[(x,y)][0]*self.fort_helper[(x,y)][1] >= self.fort_info[0][0][0] * self.fort_info[0][0][1]:
+                # we only care about forests with 5x5 or larger areas
+                if ((self.fort_helper[(x,y)][0] > 5 or self.fort_helper[(x,y)][1] > 4) or 
+                    (self.fort_helper[(x,y)][0] > 4 or self.fort_helper[(x,y)][1] > 5)):
+                        if self.fort_helper[(x,y)][0]*self.fort_helper[(x,y)][1] == self.fort_info[0][0][0] * self.fort_info[0][0][1]:
+                            self.fort_info.append((self.fort_helper[(x,y)], x, y))
+                        else:
+                            self.fort_info = [(self.fort_helper[(x,y)], x, y)]
+
+    def save_input_trees(self):
+        true_corner = (max(0, self.KINGDOM_EXTREME[0]-1), max(0, self.KINGDOM_EXTREME[1]-1))
+        starting_id = self.get_island_id(true_corner)
+        self.X_TREE = self.get_coord(self.get_corner_resource(Tree, [starting_id]))
+        self.Y_TREE = self.get_coord(self.get_corner_resource(Tree, [starting_id]))
+        self.LENGTH_TREE = self.get_coord(self.get_corner_resource(Tree, [starting_id]))
+        self.HEIGHT_TREE = self.get_coord(self.get_corner_resource(Tree, [starting_id]))
+
     def post_processing_steps(self):
         avg_empire_location = self.gatherEmpire() + self.gatherCity()
         x_mean = statistics.mean([obj.x for obj in avg_empire_location])
@@ -197,9 +347,10 @@ class CombinedWorldState:
 
         print(f"ext: {self.KINGDOM_EXTREME}")
         self.make_islands()
-        self.resources_ordered = {}
-
+        #self.save_input_trees()
         self.make_pois()
+
+        self.next_tc_location = self.get_tc_location()
     
     def build_island(self, x, y, island_id = 0):
 
@@ -212,14 +363,12 @@ class CombinedWorldState:
 
         while stack:
             (xn,yn) = stack.pop()
-            
-            if not self.is_traversable((xn, yn)):
-                obj = self.get_coord((xn, yn))
-                if obj is not None:
-                    if island_id >= 5:
-                        print(f'added large island to {(obj.x, obj.y)}')
-                        obj.island_ids.add(island_id)
 
+            obj = self.get_coord((xn,yn))
+            if obj is not None:
+                if type(obj) != Unknown and type(obj) != Unoccupied:
+                    obj.island_ids.add(island_id) 
+            
             if (xn < 0 or yn < 0 or
                 xn >= self.length or yn >= self.height or
                 self.island_ids.get((xn, yn)) is not None or
@@ -240,6 +389,30 @@ class CombinedWorldState:
 
     def make_islands(self):
     # unvisited.
+        self.island_ids = {}
+        # To stores number of closed islands
+        result = 0
+    
+        for i in range(self.length):
+            for j in range(self.height):
+                
+                # If the land not visited
+                # then there will be atleast
+                # one closed island
+                if (self.island_ids.get((i,j)) is None):
+                    if self.is_traversable((i, j)):
+
+                        result += 1
+                    
+                        # Mark all lands associated
+                        # with island visited.
+                        self.build_island(i, j, island_id = result)
+                    else:
+                        self.island_ids[(i,j)] = 0
+        self.num_islands = result
+
+
+    def make_forest(self):
         self.island_ids = {}
 
     
@@ -281,7 +454,6 @@ class CombinedWorldState:
     def percent_uncovered_f(self):
 
         p =  len([obj for obj in self.object_coord.values() if type(obj) != Unknown]) / (self.length * self.height)
-        print('UNC:', p)
         return(p)
 
     def _make_pois_empire_corners(self):
@@ -302,18 +474,18 @@ class CombinedWorldState:
         if self.empire is None:
             all_units = [obj for obj in self.object_coord.values() if issubclass(type(obj), Unit)]
             self.empire = [u for u in all_units if u.team == self.team_id]
-            self.empire = sorted(self.empire, key=lambda obj: obj.id)
+            self.empire = sorted(self.empire, key=lambda obj: obj.id, reverse=True)
         return self.empire
 
     def gatherCity(self):
         if self.city is None:
             all_buildings = [obj for obj in self.object_coord.values() if issubclass(type(obj), Building)]
-            self.city = [b for b in all_buildings if b.team == self.team_id]
+            self.city = list(set([b for b in all_buildings if b.team == self.team_id]))
         return self.city
     
     def render(self):
         from render import TREE as COL_TREE, GOLD as COL_GOLD, NORM, teamcols
-
+        
         print_string = ''
         for y in range(self.length):
             for x in range(self.height):
@@ -349,22 +521,26 @@ class CombinedWorldState:
                     print_string += color + char + extra
 
                 if issubclass(type(obj), Building):
-                    print_string += 'b '
+                    color = teamcols[obj.team]
+                    print_string += color + 'b '
 
                 if (x,y) in self.pois:
                     print_string = print_string[:-1] + COL_GOLD + 'X'
-                print_string += str(self.island_ids[(x,y)])
+
+                if (x,y) == self.tclc:
+                    print_string = print_string[:-2] + COL_GOLD + 'TC'
+
 
             print_string += (NORM + '\n')
         print(print_string)
 
 def run(world_state, players, team_idx):
     NUMBER_SYSTEM = {}
-
     start_time = time.time()
 
     Unit.our_kingdom = team_idx 
     cws = CombinedWorldState(world_state, players, team_idx)
+    cws.start_time = start_time
 
     # Always iterate over the map ONCE at the beginning to update units
     # and stuff.
@@ -378,14 +554,65 @@ def run(world_state, players, team_idx):
 
     empire = cws.gatherEmpire()
 
-    unit_commands = [unit.execute(cws) for unit in empire]
-    building_commands = [bld.execute(cws) for bld in cws.gatherCity()]
+
+    # Leave .1 sec for buffer
+    # Only give the first n players 
+    # Leave .05 seconds for buildings
+
+    unit_commands = []
+    for u in empire:
+        if time.time() - start_time < .68:
+            m = u.execute(cws)
+            unit_commands.append(m)
+        elif time.time() - start_time < .85:
+            m = u.execute_basic(cws)
+            unit_commands.append(m)
+        else:
+            break
+
+    building_commands = []
+    for b in cws.gatherCity():
+        if time.time() - start_time < .95:
+            m = b.execute(cws)
+            building_commands.append(m)
+        else:
+            break
+
+
     end_time = time.time()
-
     print(f"end: {end_time - middle_time}")
+    """
 
+    if ((end_time - middle_time) >.7):
+        import json
+        # create json object from dictionary
+        json_world = json.dumps(world_state)
+
+        # open file for writing, "w" 
+        f = open("world.json","w")
+
+        # write json object to file
+        f.write(json_world)
+
+        # close file
+        f.close()
+
+        json_players = json.dumps(players)
+
+        f = open("players.json","w")
+
+        # write json object to file
+        f.write(json_players)
+
+        # close file
+        f.close()
+
+        print(team_idx)
+
+        quit("Long proc time")
+    """
     cws.render()
-    print(cws.players_raw)
+    print(cws.wood, cws.gold)
 
     reset_number_system()
 

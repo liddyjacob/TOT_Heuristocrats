@@ -33,8 +33,6 @@ class Attack:
     def __str__(self):
         return f"attacking: {self.target} - {self.target_id}"            
 
-
-
 class Repair:
     def __init__(self, bld):
         self.bld_id = bld.id

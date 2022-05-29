@@ -6,12 +6,14 @@
 class MapObj:
     def __init__(self, theoretical):
         self.theoretical = theoretical
+        self.travel_ban = False
 
 class Resource(MapObj):
     def __init__(self, obj, theoretical = False):
         super().__init__(theoretical)
         self.obj_raw = obj
         self.island_ids = set()
+        self.travel_ban = True
         if not self.theoretical:
             self.id = obj['id']
             self.x = obj['x']
@@ -30,7 +32,9 @@ class Gold(Resource):
 class Unknown(MapObj):
     def __init__(self):
         super().__init__(True)
+        self.id = -2
 
 class Unoccupied(MapObj):
     def __init__(self, theoretical = False):
         super().__init__(theoretical)
+        self.id = -3

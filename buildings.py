@@ -8,11 +8,24 @@ class Building:
         self.id = obj['id']
         self.hp = obj['hp']
         self.island_ids = set()
+        self.travel_ban = True
 
     def execute(self, cws):
         from ai.heuristocrats.moves import Produce
 
         return Produce().apply(self)
+
+    def __eq__(self, other):
+        if not issubclass(type(other), Building):
+            return False
+        return self.id == other.id
+
+    def __hash__(self):
+        return self.id
+
+    @staticmethod 
+    def turnsToProduce():
+        return 15
 
 class Townhall(Building):
     def __init__(self, obj):
@@ -21,6 +34,10 @@ class Townhall(Building):
     @staticmethod
     def buildcost():
         return((200,0))
+
+    @staticmethod
+    def producecost():
+        return((0,10))
 
     @staticmethod
     def housing():
@@ -43,6 +60,10 @@ class Barracks(Building):
         return((50,0))
 
     @staticmethod
+    def producecost():
+        return((0,20))
+
+    @staticmethod
     def housing():
         return 0
 
@@ -61,6 +82,10 @@ class Range(Building):
     @staticmethod
     def buildcost():
         return((70,0))
+
+    @staticmethod
+    def producecost():
+        return((10,10))
 
     @staticmethod
     def housing():
@@ -84,6 +109,10 @@ class Stable(Building):
         return((90,0))
 
     @staticmethod
+    def producecost():
+        return((0,40))
+
+    @staticmethod
     def housing():
         return 0
 
@@ -102,6 +131,10 @@ class House(Building):
     @staticmethod
     def buildcost():
         return((90,40))
+
+    @staticmethod
+    def producecost():
+        return((0,0))
 
     @staticmethod
     def housing():

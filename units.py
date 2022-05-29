@@ -1,9 +1,16 @@
 from pickle import GLOBAL
+from socket import timeout
 from threading import current_thread
 from ai.heuristocrats.moves import Move, Build, Repair, Attack
-from ai.heuristocrats.utils import get_path_a_star
+from ai.heuristocrats.utils import gold_per_turn_needed, handler
 from ai.heuristocrats.buildings import Townhall, Barracks, Range, Stable, House
-from ai.heuristocrats.resources import Gold, Tree
+from ai.heuristocrats.resources import Gold, Resource, Tree
+from ai.heuristocrats.behaviors import *
+import math
+import signal
+import threading
+import time
+#
 
 class Unit:
     our_kingdom = 0
@@ -17,14 +24,25 @@ class Unit:
         self.id = obj['id']
         self.team = obj['team']
         self.island_ids = set()
-        if self.team == self.our_kingdom:
-            self.number = NUMBER_SYSTEM[type(self)]
-            NUMBER_SYSTEM[type(self)] = NUMBER_SYSTEM[type(self)] + 1
+        self.turn = {}
+        self.travel_ban = True
 
     def execute(self, cws):
+        self.number = NUMBER_SYSTEM[type(self)]
+        NUMBER_SYSTEM[type(self)] = NUMBER_SYSTEM[type(self)] + 1
 
-        self.turn = Move([1,0])
-        return(self.turn.apply(self))
+        self.follow_behaviors(cws)
+
+        if self.turn == {}:
+            self.follow_basic_behaviors(cws)
+            
+        #self.follow_behaviors(cws)
+        return(self.turn)
+
+    def execute_basic(self,cws):
+        self.follow_basic_behaviors(cws)
+        return(self.turn)
+
 
     # todo update health and stuff
     def update(self, obj):
@@ -34,141 +52,85 @@ class Unit:
     def __hash__(self):
         return hash(self.id)
 
-GOLD_TAKEN_CARE_OF = 0
-WOOD_TAKEN_CARE_OF = 0
 class Villager(Unit):
     def __init__(self, obj):
         super().__init__(obj)
     
-    def execute(self, cws):
-        global GOLD_TAKEN_CARE_OF, WOOD_TAKEN_CARE_OF
-        self.island_ids = set()
-
-        # debug funny business
-        for i in range(-1,2):
-            for j in range(-1,2):
-                id_name = cws.get_island_id((self.x + i, self.y + j))
-                if id_name > 0:
-                    self.island_ids.add(id_name)
-
-        print(self.island_ids)
+    def follow_behaviors(self, cws):
         
         if len(cws.gatherCity()) == 0:
-            turn = self.executeBuildTC(cws)
+            # no purpose in building so early without gold:
+            if cws.gold <= 10:
+                turn = AttackNearbyResource(self, cws, Gold)
+                if turn:
+                    self.turn = turn.apply(self)
+                    return
+
+                turn = GetNearbyResource(self, cws, Gold)
+                if turn:
+                    self.turn = turn.apply(self)
+                    return
+
+
+            turn = BuildInitialTC(self, cws)
             if turn:
-                print(turn.apply(self))
-                return turn.apply(self)
+                self.turn = turn.apply(self)
+                return
 
         # see if there are any buildings nearby to repair:
-        turn = self.executeRepairNearby(cws)
+        turn = RepairNearby(self,cws)
         if turn:
-            print(turn.apply(self))
-            return turn.apply(self)
-
+            self.turn = turn.apply(self)
+            return
+        
+        # lol build town halls everywhere
         if cws.can_afford(Townhall.buildcost()):
-            turn = self.executeBuildTC(cws)
+            turn = BuildInitialTC(self, cws)
             if turn:
-                print(turn.apply(self))
-                return turn.apply(self)
+                self.turn = turn.apply(self)
+                return
 
+        gold_req = gold_per_turn_needed(cws)
 
-        # solo behavior: get gold!
-        if GOLD_TAKEN_CARE_OF == 0:
-            turn = self.executeGetNearby(cws, Gold)
+        if self.number <= math.ceil(gold_req):
+            # first, see if there is any gold nearvy
+            turn = AttackNearbyResource(self, cws, Gold)
             if turn:
-                print(turn.apply(self))
-                GOLD_TAKEN_CARE_OF = 1
-                return turn.apply(self)
+                self.turn = turn.apply(self)
+                return
 
-        # Get Wood!   
-        elif WOOD_TAKEN_CARE_OF == 0:
-            turn = self.executeGetNearby(cws, Tree)
+            turn = GetNearbyResource(self, cws, Gold)
             if turn:
-                print(turn.apply(self))
-                WOOD_TAKEN_CARE_OF = 1
-                return turn.apply(self)     
+                self.turn = turn.apply(self)
+                return
 
-
-        # Odd ones shoud get gold?
-        # Even ones should get wood?
-        if (self.id % 3) == 0:
-            turn = self.executeGetNearby(cws, Gold)
-            if turn:
-                print(turn.apply(self))
-                return turn.apply(self)
-        else:
-            turn = self.executeGetNearby(cws, Tree)
-            if turn:
-                print(turn.apply(self))
-                return turn.apply(self)
-
-        turn = self.executeFolExplore(cws)
+        # get trees from now on
+        turn = AttackNearbyResource(self, cws, Tree)
         if turn:
-            print(turn.apply(self))
-            return turn.apply(self)
+            self.turn = turn.apply(self)
+            return
 
-        self.turn = Move([0,0])
-        return(self.turn.apply(self))
-
-
-        # r
-        # only 1 explorer
-
-    def executeBuildTC(self, cws):
-        import random
-        if (random.random() < .75):
-            return Build(Townhall, [self.x + random.randint(-1,1), self.y + random.randint(-1,1)])
-        else:
-            return Move([random.randint(-1,1), random.randint(-1,1)])
-
-    def executeRepairNearby(self, cws):
-        for i in range(-1,2):
-            for j in range(-1,2):
-                obj = cws.get_coord((self.x + i, self.y + j))
-                if obj in cws.gatherCity():
-                    if obj.hp != obj.max_health():
-                        return Repair(obj)
-
-        return None
-
-    # see if there is gold nearby, then get it
-    def executeGetNearby(self,cws, giventype):
-        import time
-        # get lowest resource in kingdom:
-        target = cws.get_corner_resource(giventype, next(iter(self.island_ids)))
-        print(target)
-
-        if target is None:
-            print('target was nonte')
-            return None
-
-        # gold is attainable, find it  
-        start = (self.x, self.y)
-
-        path = get_path_a_star(cws, start, target)
-        if len(path) == 2:
-            return Attack(cws.get_coord(target))
-
-        step = path[-2]
-        return Move([step[0] - self.x, step[1] - self.y])
+        turn = GetNearbyResource(self, cws, Tree)
+        if turn:
+            self.turn = turn.apply(self)
+            return
 
 
+    # Time ran out, see if we can get a basic behavior in:
+    def follow_basic_behaviors(self, cws):
+        # Get Anything
+        turn = AttackNearbyResource(self, cws, Resource)
+        if turn:
+            self.turn = turn.apply(self)
+            return
+
+        # if that fails, attack an enemy
 
 
-    def executeFolExplore(self, cws):
-        # Discover foliage if there is foliage to discover
-        start = (self.x, self.y)
-
-        for wp in cws.fexplore_waypoints:
-            for dx in [-1,0,1]:
-                for dy in [-1,0,1]:
-                    if cws.get_island_id(wp) == cws.get_island_id((self.x + dx, self.y + dy)):
-                        path = get_path_a_star(cws, start, wp)
-                        next = path[-2]
-                        return Move([next[0] - start[0], next[1] - start[1]])
-
-        return None
-
+        # if that fails, move a random direction
+        turn = Move([random.randint(-1,1), random.randint(-1,1)])
+        self.turn = turn.apply(self)
+        
 
     @staticmethod
     def type():
@@ -179,7 +141,7 @@ class Archer(Unit):
     def __init__(self, obj):
         super().__init__(obj)
 
-    def execute(self, cws):
+    def follow_behaviors(self, cws):
         global NUMBER_SYSTEM
         # debug funny business
         NUMBER_SYSTEM[type(self)] = 1
@@ -192,36 +154,33 @@ class Infantry(Unit):
     def __init__(self, obj):
         super().__init__(obj)
 
-    def execute(self, cws):
-
-        if self.number == 1:
-            turn = self.executeFolExplore(cws)
+    def follow_behaviors(self, cws):
+        if cws.percent_uncovered_f() < .55:
+            turn = ExploreFoliage(self, cws)
             if turn:
-                return turn.apply(self)
+                self.turn = turn.apply(self)
+                return
 
+        turn = GetNearbyResource(self, cws, Tree)
+        if turn:
+            self.turn = turn.apply(self)
+            return
 
-        self.turn = Move([0,0])
-        return(self.turn.apply(self))
-
+        self.turn = Move([0,0]).apply(self)
+        return
         # r
         # only 1 explorer
 
-    
-    def executeFolExplore(self, cws):
-        # Discover foliage if there is foliage to discover
-        if cws.percent_uncovered_f() < .8:
-            start = (self.x, self.y)
+    # Time ran out, see if we can get a basic behavior in:
+    def follow_basic_behaviors(self, cws):
+        # Attack any nearby villager
 
+        # then check enemies
 
-            for wp in cws.fexplore_waypoints:
-                for dx in [-1,0,1]:
-                    for dy in [-1,0,1]:
-                        if cws.get_island_id(wp) == cws.get_island_id((self.x + dx, self.y + dy)):
-                            path = get_path_a_star(cws, start, wp)
-                            next = path[-2]
-                            return Move([next[0] - start[0], next[1] - start[1]])
-
-        return None
+        # if that fails, move a random direction
+        turn = Move([random.randint(-1,1), random.randint(-1,1)])
+        self.turn = turn.apply(self)
+        
 
     @staticmethod
     def type():
@@ -231,7 +190,7 @@ class Calvary(Unit):
     def __init__(self, obj):
         super().__init__(obj)
 
-    def execute(self, cws):
+    def follow_behaviors(self, cws):
         global NUMBER_SYSTEM
         # debug funny business
         NUMBER_SYSTEM[type(self)] = 1
