@@ -1,13 +1,15 @@
 from copy import deepcopy
 from operator import ne
+from turtle import up
+from ai.heuristocrats.buildings import Barracks, Range, Townhall, Stable
 from ai.heuristocrats.constants import *
-from ai.shitutils import coord_to_int
 from ai.heuristocrats.resources import Unknown
 # Given size of Matrix
 import heapq as heap
 import math
 import random
 from random import shuffle
+import time
 
 def reconstruct_path(cameFrom, current):
     total_path = [current]
@@ -16,7 +18,9 @@ def reconstruct_path(cameFrom, current):
         total_path.append(current)
     return total_path
 
+ASTART_LIMIT = .025
 def get_path_a_star(cws, start, end):
+    # Only allow a select period of time for a* algorithm.
     openSet = set()
     openSet.add(start)
 
@@ -26,6 +30,8 @@ def get_path_a_star(cws, start, end):
 
     fScore = {}
     fScore[start] = (1)
+
+    start = time.time()
 
     while len(openSet) != 0:
         curr = min(openSet, key=fScore.get)
@@ -61,8 +67,11 @@ def get_path_a_star(cws, start, end):
                 if neighbor not in openSet:
                     openSet.add(neighbor)
 
+    if time.time() - start > ASTART_LIMIT:
+        return reconstruct_path(cameFrom, curr)
 
 
+# only allow .025 seconds before returning
 def get_path_a_star_any(cws, start, goal_type):
     openSet = set()
     openSet.add(start)
@@ -107,6 +116,8 @@ def get_path_a_star_any(cws, start, goal_type):
                 fScore[neighbor] = tentative_gScore + heur_score
                 if neighbor not in openSet:
                     openSet.add(neighbor)
+
+
 
 
 def valid_coordinate(x,y):
@@ -156,6 +167,93 @@ def gold_per_turn_needed(cws):
 
     return gold_per_turn_needed
 
+def wood_per_turn_needed(cws):
+    wood_per_turn_needed = 0
+    for building in cws.gatherCity():
+        wood_per_turn_needed += building.producecost()[0] / building.turnsToProduce()
+
+    return wood_per_turn_needed
+
 def handler(signum, frame):
    print('Did not finish in time: signum, frame')
    raise Exception("end of time")
+
+
+# resource plinko: determine how much gold is needed, and how much wood is needed.
+#
+WOOD_LEVEL = 0 
+def resource_plinko_board(cws):
+    global WOOD_LEVEL
+    from ai.heuristocrats.units import Villager
+    needed_gold = gold_per_turn_needed(cws)
+    needed_wood = wood_per_turn_needed(cws)
+    other = cws.getPopulation(Villager) - (needed_gold + needed_wood)
+
+    if other > 0:
+        needed_wood = needed_gold + other
+    
+    # Now we need to split into how many parts of 13 are needed for each resource.
+
+    WOOD_LEVEL = math.floor(13 * (needed_wood / (needed_wood + needed_gold)))
+
+def get_resource_from_id(id):
+    from ai.heuristocrats.resources import Tree, Gold
+
+    hash = (17 * id) % 13
+
+    if hash < WOOD_LEVEL:
+        print("getting tree")
+        return Tree
+    else:
+        print("getting gold")
+        return Gold
+    
+# determine if it is more economical to upgrade a set of units or build a new one:
+def upgrade_over_build(cws, typeof):
+    if typeof is None:
+        return False
+    
+    pop = cws.getPopulation(typeof)
+
+    power_per_gold = typeof.power(cws.level[typeof]) / typeof.cost()[1]
+    upgrade_per_gold = pop / (typeof.cost()[1] * 10)
+
+    # upgrade if power per gold is comparable(health benefits make up the rest)
+    return power_per_gold < (upgrade_per_gold / 2)
+
+def wander_goal(cws):
+    mod_time = int(time.time().seconds/40)
+    # return the corners of the empire, cycling on the mod_time value m
+    if (mod_time % 3) == 0:
+        return 
+        
+
+def get_next_building(cws):
+    from ai.heuristocrats.units import Archer
+    # Always need 1 townhall
+    if cws.num_buildings(Townhall) < 1:
+        return Townhall
+
+    # Then build a barracks, for guards:
+    if cws.num_buildings(Barracks) < 1:
+        return Barracks
+
+    # Then another townhall
+    if cws.num_buildings(Townhall) < 2:
+        return Townhall
+
+    # Then 2 archery ranges:
+    if cws.num_buildings(Range) < 2:
+        return Range
+
+    # check if we need to reserve money for archery ranges:
+    if upgrade_over_build(cws, Archer):
+        return None
+
+    # Then another townhall
+    if cws.num_buildings(Townhall) < 2:
+        return Townhall
+
+    #
+    # Finally, a calvary thing
+    return Stable

@@ -1,4 +1,3 @@
-
 class Building:
     def __init__(self, obj):
         self.team = obj["team"]
@@ -11,8 +10,21 @@ class Building:
         self.travel_ban = True
 
     def execute(self, cws):
-        from ai.heuristocrats.moves import Produce
+        from ai.heuristocrats.moves import Produce, Upgrade
+        from ai.heuristocrats.utils import upgrade_over_build
+        from ai.heuristocrats.units import Infantry, Archer, Calvary
 
+        typeof = None
+        if type(self) == Range:
+            typeof = Archer
+        if type(self) == Barracks:
+            typeof = Infantry
+        if type(self) == Stable:
+            typeof = Calvary
+        
+        if upgrade_over_build(cws, typeof):
+            return Upgrade().apply(self)
+        
         return Produce().apply(self)
 
     def __eq__(self, other):
@@ -27,6 +39,10 @@ class Building:
     def turnsToProduce():
         return 15
 
+    @staticmethod 
+    def size():
+        return (3,3)
+
 class Townhall(Building):
     def __init__(self, obj):
         super().__init__(obj)
@@ -39,9 +55,10 @@ class Townhall(Building):
     def producecost():
         return((0,10))
 
+
     @staticmethod
     def housing():
-        return 4
+        return 9
 
     @staticmethod
     def max_health():
@@ -128,6 +145,9 @@ class House(Building):
     def __init__(self, obj):
         super().__init__(obj)
 
+    def execute(self, cws):
+        return {}
+
     @staticmethod
     def buildcost():
         return((90,40))
@@ -135,15 +155,24 @@ class House(Building):
     @staticmethod
     def producecost():
         return((0,0))
+    
+    def produces():
+        return None
 
     @staticmethod
     def housing():
-        return 9
+        return 4
 
     @staticmethod
     def max_health():
         return 40
 
+    
+
     @staticmethod
     def rep():
         return 'h'
+
+    @staticmethod 
+    def size():
+        return (2,2)

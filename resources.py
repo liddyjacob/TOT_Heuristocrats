@@ -2,11 +2,11 @@
 # Resources can be real or theoretical, 
 # depending on if they are assumed from 
 # reflection or observed.
-
 class MapObj:
     def __init__(self, theoretical):
         self.theoretical = theoretical
         self.travel_ban = False
+        self.alley = False
 
 class Resource(MapObj):
     def __init__(self, obj, theoretical = False):
@@ -14,6 +14,8 @@ class Resource(MapObj):
         self.obj_raw = obj
         self.island_ids = set()
         self.travel_ban = True
+        self.reserved = False
+
         if not self.theoretical:
             self.id = obj['id']
             self.x = obj['x']

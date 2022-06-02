@@ -53,3 +53,14 @@ class Produce:
 
     def __str__(self):
         return f"Produced"    
+
+
+class Upgrade:
+    def __init__(self):
+        pass
+    
+    def apply(self, bld):
+        return {"id": bld.id, "command":'u', "arg": None}
+
+    def __str__(self):
+        return f"Produced"   

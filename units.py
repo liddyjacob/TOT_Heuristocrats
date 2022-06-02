@@ -2,7 +2,7 @@ from pickle import GLOBAL
 from socket import timeout
 from threading import current_thread
 from ai.heuristocrats.moves import Move, Build, Repair, Attack
-from ai.heuristocrats.utils import gold_per_turn_needed, handler
+from ai.heuristocrats.utils import gold_per_turn_needed, handler, get_resource_from_id, get_next_building
 from ai.heuristocrats.buildings import Townhall, Barracks, Range, Stable, House
 from ai.heuristocrats.resources import Gold, Resource, Tree
 from ai.heuristocrats.behaviors import *
@@ -71,8 +71,7 @@ class Villager(Unit):
                     self.turn = turn.apply(self)
                     return
 
-
-            turn = BuildInitialTC(self, cws)
+            turn = BuildThing(self, cws, Townhall)
             if turn:
                 self.turn = turn.apply(self)
                 return
@@ -83,37 +82,62 @@ class Villager(Unit):
             self.turn = turn.apply(self)
             return
         
+        # build houses if a house is needed
+        if cws.get_housing() < len(cws.gatherEmpire()) + 4:
+            turn = BuildThing(self, cws, House)
+            if turn:
+                self.turn = turn.apply(self)
+                return
+
         # lol build town halls everywhere
-        if cws.can_afford(Townhall.buildcost()):
-            turn = BuildInitialTC(self, cws)
+        buildingtype = get_next_building(cws)
+
+        if cws.can_afford(buildingtype.buildcost()):
+            turn = BuildThing(self, cws, buildingtype)
             if turn:
                 self.turn = turn.apply(self)
                 return
 
-        gold_req = gold_per_turn_needed(cws)
-
-        if self.number <= math.ceil(gold_req):
-            # first, see if there is any gold nearvy
-            turn = AttackNearbyResource(self, cws, Gold)
+        #if high enough population, ignore villager shuffling when possible:
+        if cws.getPopulation(Villager) > 8:
+            turn = AttackNearbyResource(self, cws, Resource)
             if turn:
                 self.turn = turn.apply(self)
                 return
 
-            turn = GetNearbyResource(self, cws, Gold)
+        # also once we have 12 villagers, we should assign jobs by modulating id
+        if cws.getPopulation(Villager) >= 13:
+            rtype = get_resource_from_id(self.id)
+            turn = GetNearbyResource(self, cws, rtype)
+            if turn:
+                self.turn = turn.apply(self)
+                return
+        
+        else:
+            gold_req = gold_per_turn_needed(cws)
+
+            if self.number <= math.ceil(gold_req):
+                # first, see if there is any gold nearvy
+                turn = AttackNearbyResource(self, cws, Gold)
+                if turn:
+                    self.turn = turn.apply(self)
+                    return
+
+                turn = GetNearbyResource(self, cws, Gold)
+                if turn:
+                    self.turn = turn.apply(self)
+                    return
+
+            # get trees from now on
+            turn = AttackNearbyResource(self, cws, Tree)
             if turn:
                 self.turn = turn.apply(self)
                 return
 
-        # get trees from now on
-        turn = AttackNearbyResource(self, cws, Tree)
-        if turn:
-            self.turn = turn.apply(self)
-            return
-
-        turn = GetNearbyResource(self, cws, Tree)
-        if turn:
-            self.turn = turn.apply(self)
-            return
+            turn = GetNearbyResource(self, cws, Tree)
+            if turn:
+                self.turn = turn.apply(self)
+                return
 
 
     # Time ran out, see if we can get a basic behavior in:
@@ -142,24 +166,44 @@ class Archer(Unit):
         super().__init__(obj)
 
     def follow_behaviors(self, cws):
-        global NUMBER_SYSTEM
-        # debug funny business
-        NUMBER_SYSTEM[type(self)] = 1
+        return None
+
+    def follow_basic_behaviors(self, cws):
+        return None
 
     @staticmethod
     def type():
         return 'Archer'
+
+    @staticmethod
+    def power(i):
+        if i == 1:
+            return 1
+        if i == 2:
+            return 2
+        if i == 3:
+            return 3
+
+    @staticmethod
+    def cost():
+        return((10,10))
+
 
 class Infantry(Unit):
     def __init__(self, obj):
         super().__init__(obj)
 
     def follow_behaviors(self, cws):
-        if cws.percent_uncovered_f() < .55:
+        if cws.percent_uncovered_f() < .7:
             turn = ExploreFoliage(self, cws)
             if turn:
                 self.turn = turn.apply(self)
                 return
+
+        turn = ExploreGeneral(self, cws)
+        if turn:
+            self.turn = turn.apply(self)
+            return        
 
         turn = GetNearbyResource(self, cws, Tree)
         if turn:
@@ -183,21 +227,50 @@ class Infantry(Unit):
         
 
     @staticmethod
+    def power(i):
+        if i == 1:
+            return 2
+        if i == 2:
+            return 3
+        if i == 3:
+            return 4
+
+    @staticmethod
     def type():
         return 'Infantry'
+
+    @staticmethod
+    def cost():
+        return((0,20))
+
 
 class Calvary(Unit):
     def __init__(self, obj):
         super().__init__(obj)
 
     def follow_behaviors(self, cws):
-        global NUMBER_SYSTEM
-        # debug funny business
-        NUMBER_SYSTEM[type(self)] = 1
+        return None
 
+    def follow_basic_behaviors(self, cws):
+        return None
+    
     @staticmethod
     def type():
         return 'Calvary'
+
+    @staticmethod
+    def power(i):
+        if i == 1:
+            return 3
+        if i == 2:
+            return 4
+        if i == 3:
+            return 5
+
+    @staticmethod
+    def cost():
+        return((0,40))
+
 
 class Skeleton(Archer):
     def __init__(self, obj):
