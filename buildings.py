@@ -167,8 +167,6 @@ class House(Building):
     def max_health():
         return 40
 
-    
-
     @staticmethod
     def rep():
         return 'h'

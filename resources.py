@@ -20,6 +20,7 @@ class Resource(MapObj):
             self.id = obj['id']
             self.x = obj['x']
             self.y = obj['y']
+            self.hp = obj['hp']
         else:
             self.id = -1
 

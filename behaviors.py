@@ -2,7 +2,7 @@ from pickle import FALSE
 import random
 from ai.heuristocrats.buildings import Building, Townhall, Barracks, Range, Stable, House
 from ai.heuristocrats.moves import Move, Build, Repair, Attack
-from ai.heuristocrats.utils import get_path_a_star
+from ai.heuristocrats.utils import get_path_a_star, wander_goal
 from ai.heuristocrats.resources import Gold, Resource, Tree
 
 """
@@ -64,7 +64,7 @@ def BuildThing(unit, cws, typeof):
     # If no one can build, send 3 guys to explore PER BUILD TYPE
     if cws.num_vils_exploring[typeof] < 3:
         cws.num_vils_exploring[typeof] += 1
-        return ExploreFoliage(unit, cws)
+        return Wander(unit, cws)
 
     return None
 
@@ -112,6 +112,43 @@ def GetNearbyResource(unit, cws, typeof):
     step = path[-2]
     return Move([step[0] - unit.x, step[1] - unit.y])
 
+# Become the bodyguard of a villager. 
+def Bodyguard(unit, cws):
+    # If we know the id of the current unit, we can find the nearest villager by ID.
+    pass
+
+# LOL Archers use trees to keep track of archer locations.
+def DataMine(unit, cws):
+    pair = cws.get_tree_and_target()
+    if pair is None:
+        return None
+
+    (target_val, tree) = pair
+
+    #if tree.
+    if unit.within_range((tree.x, tree.y)):
+        if tree.hp > target_val:
+            tree.hp -= unit.power(cws.level[type(unit)])
+            return Attack(tree)
+
+    else:
+        nearest_tp = cws.get_nearby_travel((tree.x, tree.y))
+        if cws.get_island_id(nearest_tp) not in unit.island_ids:
+            print("AAA")
+            return None
+        
+        path = get_path_a_star(cws, (unit.x, unit.y), nearest_tp)
+        next = path[-2]
+        return Move([next[0] - unit.x, next[1] - unit.y])
+
+    return None
+
+
+# Send archers to clear alleys stored with the trees
+def ClearAlleys(unit, cws):
+    pass
+
+
 def ExploreFoliage(unit, cws):
     # Discover foliage if there is foliage to discover
     start = (unit.x, unit.y)
@@ -140,4 +177,15 @@ def ExploreGeneral(unit, cws):
 
     return None
 
+def Wander(unit, cws):
+    wgoal = wander_goal(cws)
 
+    if wgoal is None:
+        return None
+
+    for dx in [-1,0,1]:
+        for dy in [-1,0,1]:
+            if cws.get_island_id(wgoal) == cws.get_island_id((unit.x + dx, unit.y + dy)):
+                path = get_path_a_star(cws, (unit.x, unit.y), wgoal)
+                next = path[-2]
+                return Move([next[0] - unit.x, next[1] - unit.y])

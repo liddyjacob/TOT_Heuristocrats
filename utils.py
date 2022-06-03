@@ -213,19 +213,27 @@ def upgrade_over_build(cws, typeof):
     if typeof is None:
         return False
     
+    if cws.level[typeof] == 3:
+        return False
+
+    # if we are rich, upgrade.
+    if cws.wood > 400 and cws.gold > 500:
+        cws.wood -= (typeof.cost()[0] * 10) 
+        cws.gold -= (typeof.cost()[1] * 10) 
+        return True
+
     pop = cws.getPopulation(typeof)
 
     power_per_gold = typeof.power(cws.level[typeof]) / typeof.cost()[1]
-    upgrade_per_gold = pop / (typeof.cost()[1] * 10)
+    upgrade_per_gold = pop / (typeof.cost()[1] * 10) 
 
     # upgrade if power per gold is comparable(health benefits make up the rest)
-    return power_per_gold < (upgrade_per_gold / 2)
+    return power_per_gold < (upgrade_per_gold * 2)
 
 def wander_goal(cws):
-    mod_time = int(time.time().seconds/40)
+    mod_time = int(time.time()/40)
     # return the corners of the empire, cycling on the mod_time value m
-    if (mod_time % 3) == 0:
-        return 
+    return cws.wander_locations[mod_time % 3]
         
 
 def get_next_building(cws):
@@ -250,10 +258,11 @@ def get_next_building(cws):
     if upgrade_over_build(cws, Archer):
         return None
 
-    # Then another townhall
-    if cws.num_buildings(Townhall) < 2:
-        return Townhall
+    if cws.num_buildings(Stable) < 2:
+        return Stable
 
-    #
-    # Finally, a calvary thing
-    return Stable
+    # Then another townhall
+    if (cws.num_buildings(Stable) + cws.num_buildings(Archer)) % 2:
+        return Range
+    else:
+        return Stable

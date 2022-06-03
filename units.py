@@ -43,6 +43,9 @@ class Unit:
         self.follow_basic_behaviors(cws)
         return(self.turn)
 
+    #  default behavior: just check if it is within one coord
+    def within_range(self, pair):
+        return max(abs(pair[0] - self.x), abs(pair[1] - self.y)) == 1
 
     # todo update health and stuff
     def update(self, obj):
@@ -55,9 +58,12 @@ class Unit:
 class Villager(Unit):
     def __init__(self, obj):
         super().__init__(obj)
+
+    @staticmethod
+    def power(level):
+        return 1
     
     def follow_behaviors(self, cws):
-        
         if len(cws.gatherCity()) == 0:
             # no purpose in building so early without gold:
             if cws.gold <= 10:
@@ -83,7 +89,7 @@ class Villager(Unit):
             return
         
         # build houses if a house is needed
-        if cws.get_housing() < len(cws.gatherEmpire()) + 4:
+        if cws.get_housing() < len(cws.gatherEmpire()) + 1.25 * len(cws.gatherCity()) - cws.num_buildings(House) :
             turn = BuildThing(self, cws, House)
             if turn:
                 self.turn = turn.apply(self)
@@ -92,11 +98,12 @@ class Villager(Unit):
         # lol build town halls everywhere
         buildingtype = get_next_building(cws)
 
-        if cws.can_afford(buildingtype.buildcost()):
-            turn = BuildThing(self, cws, buildingtype)
-            if turn:
-                self.turn = turn.apply(self)
-                return
+        if buildingtype is not None:
+            if cws.can_afford(buildingtype.buildcost()):
+                turn = BuildThing(self, cws, buildingtype)
+                if turn:
+                    self.turn = turn.apply(self)
+                    return
 
         #if high enough population, ignore villager shuffling when possible:
         if cws.getPopulation(Villager) > 8:
@@ -166,6 +173,11 @@ class Archer(Unit):
         super().__init__(obj)
 
     def follow_behaviors(self, cws):
+        turn = DataMine(self, cws)
+        if turn:
+            self.turn = turn.apply(self)
+            return
+
         return None
 
     def follow_basic_behaviors(self, cws):
@@ -188,6 +200,9 @@ class Archer(Unit):
     def cost():
         return((10,10))
 
+    #  default behavior: just check if it is within one coord
+    def within_range(self, pair):
+        return abs(pair[0] - self.x) + abs(pair[1] - self.y) <= 8
 
 class Infantry(Unit):
     def __init__(self, obj):
