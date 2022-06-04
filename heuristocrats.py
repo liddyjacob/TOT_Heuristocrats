@@ -85,6 +85,8 @@ def iterate_over_map(cws):
     for x in range(cws.length):
         for y in range(cws.height):
             obj = cws.identify_and_associate(x,y)
+            obj.x = x
+            obj.y = y
             cws.process(x,y)
 
             # update the 'annotated world'
@@ -283,6 +285,14 @@ class CombinedWorldState:
             trees_sorted[-(i + 1)].reserved=True
             self.reserved_trees.append(trees_sorted[-(i + 1)])
 
+    def get_alleyway_trees(self):
+        if len(self.x_alleyway_trees):
+            return self.x_alleyway_trees[0]
+        
+        if len(self.y_alleyway_trees):
+            return self.y_alleyway_trees[0]
+
+
     def get_tree_and_target(self):
         if len(self.reserved_trees) != 7:
             return None
@@ -458,21 +468,19 @@ class CombinedWorldState:
 
         self.KINGDOM_EXTREME = (self.KINGDOM_CORNER[0] * self.length, self.KINGDOM_CORNER[1] * self.height)
 
-        self.reserve_first_n_trees(7)
-
+        #self.reserve_first_n_trees(7)
+        """
         self.alleys_discovered = False
         print(f"ext: {self.KINGDOM_EXTREME}")
         if len(self.reserved_trees) == 7:
             if self.reserved_trees[6].hp != 50:
                 self.recover_alleys_from_trees()
                 self.alleys_discovered = True
-
+        """
 
         self.make_islands()
-
-        
-        self.mark_alleys()
-
+        #self.mark_alleys()
+        #self.get_alley_entrances()
 
         #self.save_input_trees()
         self.make_pois()
@@ -496,11 +504,24 @@ class CombinedWorldState:
         if self.x_alley_location is None:
             return
         
+        self.x_alleyway_trees = []
+        self.y_alleyway_trees = []
+        self.num_archers_in_x_alley = 0
+        self.num_archers_in_y_alley = 0
+
         y = self.x_alley_location[1]
         xi = self.x_alley_location[0]
         for x in range(self.x_alley_size):
             obj = self.get_coord((xi - x,y))
             obj.alley = True
+            if type(obj) == Tree:
+                if obj.reserved is False:
+                    self.x_alleyway_trees.append(obj)
+
+            if obj in self.gatherEmpire() and type(obj) == Archer:
+                self.num_archers_in_x_alley += 1
+                obj.in_x_alley = True
+            
             # also get nearby:
             obj_low = self.get_coord((xi - x,y - 1))
             if type(obj_low) == Tree:
@@ -515,6 +536,14 @@ class CombinedWorldState:
         for y in range(self.y_alley_size):
             obj = self.get_coord((x,yi - y))
             obj.alley = True
+            
+            if type(obj) == Tree:
+                self.y_alleyway_trees.append(obj)
+            
+            if obj in self.gatherEmpire() and type(obj) == Archer:
+                self.num_archers_in_y_alley += 1
+                obj.in_y_alley = True
+
 
             obj_low = self.get_coord((x - 1,yi - y))
             if type(obj_low) == Tree:
@@ -534,6 +563,41 @@ class CombinedWorldState:
 
         hkya = (self.reserved_trees[4].hp, self.reserved_trees[5].hp)
         self.y_alley_location = self.hk_to_xy(hkya)
+
+    def get_alley_entrances(self):
+        self.x_alley_entrance = None
+        self.x_alley_exit = None
+        self.y_alley_entrance = None
+        self.y_alley_exit = None
+        
+        objl = self.get_coord((self.x_alley_location[0] + 1, self.x_alley_location[1]))
+        objr = self.get_coord((self.x_alley_location[0] - (self.x_alley_size), self.x_alley_location[1]))
+
+        if self.is_traversable((objl.x, objl.y)) or objl in self.gatherEmpire():
+            self.x_alley_entrance = self.x_alley_location
+            self.x_alley_exit = (self.x_alley_location[0] - (self.x_alley_size - 1), self.x_alley_location[1])
+            
+        elif self.is_traversable((objr.x, objr.y)) or objr in self.gatherEmpire():
+            self.x_alley_entrance = (self.x_alley_location[0] - (self.x_alley_size - 1), self.x_alley_location[1])
+            self.x_alley_exit = self.x_alley_location
+        
+        objl = self.get_coord((self.y_alley_location[0], self.y_alley_location[1] + 1))
+        objr = self.get_coord((self.y_alley_location[0], self.y_alley_location[1] - (self.y_alley_size)))
+
+
+        if  self.is_traversable((objl.x, objl.y)) or objl in self.gatherEmpire():
+            self.y_alley_entrance = self.y_alley_location
+            self.y_alley_exit = (self.y_alley_location[0], self.y_alley_location[1] - self.y_alley_size + 1)
+            
+        elif self.is_traversable((objr.x, objr.y)) or objr in self.gatherEmpire():
+            self.y_alley_entrance = (self.y_alley_location[0], self.y_alley_location[1] - self.y_alley_size + 1)
+            self.y_alley_exit = self.y_alley_location
+        
+
+        
+            
+
+            
 
     def build_island(self, x, y, island_id = 0):
         # If the land is already visited
@@ -735,7 +799,7 @@ class CombinedWorldState:
                         char = ' '
 
                     print_string += color + char + extra
-                    if obj.alley:
+                    if obj.alley and type(obj) == Tree:
                         print_string = print_string[:-1] + COL_GOLD + '#' 
 
                 if issubclass(type(obj), Building):
@@ -748,6 +812,11 @@ class CombinedWorldState:
                 if (x,y) in self.wander_locations:
                     print_string = print_string[:-2] + COL_GOLD + 'WL'
 
+#                if (x,y) == self.x_alley_entrance or (x,y) == self.y_alley_entrance:
+#                    print_string = print_string[:-1] +  'N'
+
+#                if (x,y) == self.x_alley_exit or (x,y) == self.y_alley_exit:
+#                    print_string = print_string[:-1] +  'X'
 
             print_string += (NORM + '\n')
         print(print_string)

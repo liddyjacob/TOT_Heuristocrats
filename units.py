@@ -146,7 +146,6 @@ class Villager(Unit):
                 self.turn = turn.apply(self)
                 return
 
-
     # Time ran out, see if we can get a basic behavior in:
     def follow_basic_behaviors(self, cws):
         # Get Anything
@@ -171,12 +170,24 @@ class Villager(Unit):
 class Archer(Unit):
     def __init__(self, obj):
         super().__init__(obj)
+        self.in_x_alley = False
+        self.in_y_alley = False
 
     def follow_behaviors(self, cws):
-        turn = DataMine(self, cws)
-        if turn:
-            self.turn = turn.apply(self)
-            return
+        #turn = DataMine(self, cws)
+        #if turn:
+        #    self.turn = turn.apply(self)
+        #    return
+#
+        #turn = ClearAlleys(self, cws)
+        #if turn:
+        #    self.turn = turn.apply(self)
+        #    return
+#
+        #turn = FillAlleyWays(self, cws)
+        #if turn:
+        #    self.turn = turn.apply(self)
+        #    return
 
         return None
 

@@ -146,8 +146,68 @@ def DataMine(unit, cws):
 
 # Send archers to clear alleys stored with the trees
 def ClearAlleys(unit, cws):
-    pass
+    tree = cws.get_alleyway_trees()
 
+    if tree is None:
+        return None
+
+    if unit.within_range((tree.x, tree.y)):
+        return Attack(tree)
+    
+    nearest_tp = cws.get_nearby_travel((tree.x, tree.y))
+    if cws.get_island_id(nearest_tp) not in unit.island_ids:
+        print("AAA")
+        return None
+        
+    path = get_path_a_star(cws, (unit.x, unit.y), nearest_tp)
+    next = path[-2]
+    return Move([next[0] - unit.x, next[1] - unit.y])
+
+def FillAlleyWays(unit, cws):
+    # T H I C C   A S S   B E H A V I O R.
+    # if there are archers to move into the x alley, do it.
+    if (cws.num_archers_in_x_alley / cws.x_alley_size) < .8:
+        # See if we are already in this alley:
+        if unit.in_x_alley:
+            # move over if possible.
+            direction_to_move = int(abs(cws.x_alley_entrance[0] - cws.x_alley_exit[0]) / (cws.x_alley_entrance[0] - cws.x_alley_exit[0]))
+
+            if direction_to_move * (unit.x - direction_to_move) >= direction_to_move * cws.x_alley_exit[0]:
+                if cws.is_traversable((unit.x - direction_to_move, unit.y)):
+                    print("moving in x place")
+                    return Move([-direction_to_move, 0])
+
+            return GuardInPlace(unit,cws)
+            # otherwise guard
+        else:
+            if cws.get_island_id(cws.x_alley_entrance) in unit.island_ids:
+                # we don't want too many archers headed to each alley
+                cws.num_archers_in_x_alley += 1
+                path = get_path_a_star(cws, (unit.x, unit.y), cws.x_alley_entrance)
+                next = path[-2]
+                return Move([next[0] - unit.x, next[1] - unit.y])
+
+    if (cws.num_archers_in_y_alley / cws.y_alley_size) < .8:
+        if unit.in_y_alley:
+            # move over if possible.
+            direction_to_move = int(abs(cws.y_alley_entrance[1] - cws.x_alley_exit[1]) / (cws.y_alley_entrance[1] - cws.y_alley_exit[1]))
+            
+            if direction_to_move * (unit.y - direction_to_move) >= cws.y_alley_location[1] :
+                if cws.is_traversable((unit.x, unit.y - direction_to_move)):
+                    print("moving in y place")
+                    return Move([0, -direction_to_move])
+            
+            return GuardInPlace(unit,cws)
+        else:
+            if cws.get_island_id(cws.y_alley_entrance) in unit.island_ids:
+                # we don't want too many archers headed to each alley
+                cws.num_archers_in_y_alley += 1
+                path = get_path_a_star(cws, (unit.x, unit.y), cws.y_alley_entrance)
+                next = path[-2]
+                return Move([next[0] - unit.x, next[1] - unit.y])
+
+def GuardInPlace(unit, cws):
+    return None
 
 def ExploreFoliage(unit, cws):
     # Discover foliage if there is foliage to discover
