@@ -37,6 +37,9 @@ def get_path_a_star(cws, start, end):
         curr = min(openSet, key=fScore.get)
         if curr == end:
             return reconstruct_path(cameFrom, curr)
+        
+        if time.time() - start > ASTART_LIMIT:
+            return reconstruct_path(cameFrom, curr)
 
         openSet.remove(curr)
 
@@ -67,8 +70,7 @@ def get_path_a_star(cws, start, end):
                 if neighbor not in openSet:
                     openSet.add(neighbor)
 
-    if time.time() - start > ASTART_LIMIT:
-        return reconstruct_path(cameFrom, curr)
+
 
 
 # only allow .025 seconds before returning
@@ -231,10 +233,15 @@ def upgrade_over_build(cws, typeof):
     return power_per_gold < (upgrade_per_gold * 2)
 
 def wander_goal(cws):
-    mod_time = int(time.time()/40)
+    mod_time = int(time.time()/10) % 12
     # return the corners of the empire, cycling on the mod_time value m
-    return cws.wander_locations[mod_time % 3]
-        
+    if mod_time <= 5:
+        return cws.wander_locations[0]
+    if mod_time <= 7:
+        return cws.wander_locations[1]
+    
+    return cws.wander_locations[1]
+
 
 def get_next_building(cws):
     from ai.heuristocrats.units import Archer
@@ -266,3 +273,17 @@ def get_next_building(cws):
         return Range
     else:
         return Stable
+
+def get_nearest_enemy(unit, cws, subclass = None):
+    from ai.heuristocrats.units import Unit
+    if subclass is None:
+        subclass = Unit
+
+    relevant_enemies = [eu for eu in cws.gatherEnemyEmpire() if issubclass(type(eu), subclass)]
+    if len(relevant_enemies) == 0:
+        return None
+    
+    nearest_enemy = min(relevant_enemies, key=lambda eu: max(
+        abs(eu.x - unit.x), 
+        abs(eu.y - unit.y)))
+    return nearest_enemy

@@ -1,8 +1,13 @@
 OUR_KINGDOM_ID = 0
 
-
 WSIZE = 96
 HWSIZE = 48
+
+WANDER_DIST = 8
+
+# For stationing archers and stuff
+BORDER_DISTANCE = 16
+BORDER_EDGE = 2
 
 LOGFILE = open("log.txt", "a")
 

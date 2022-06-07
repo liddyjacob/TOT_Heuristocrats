@@ -113,19 +113,18 @@ class CombinedWorldState:
         self.height = len(self.world_state_raw)
         self.length = len(self.world_state_raw[0])
         self.empire = None
+        self.enemyEmpire = None
         self.city = None
+        self.enemyCity = None
         self.someone_building = False
-        self.x_alley_location = None
-
+        self.villager_can_build = {}
+        self.villager_can_build[(2,2)] = False
+        self.villager_can_build[(3,3)] = False
         self.archer_id = 0
+        self.villager_index = 0
 
         # sorting is expensive, so we need markers to determine if we have done it
         # 
-        self.x_alley_helper = {}
-        self.y_alley_helper = {}
-
-        self.x_alley_size = 0
-        self.y_alley_size = 0
 
         self.fort_helper = {}
         self.fort_info = [((0,0), None, None)]
@@ -133,7 +132,9 @@ class CombinedWorldState:
         self.resources_ordered = {}
         # debug
         self.building_helper = {}
-        self.tc_spots = set()
+        self.bld_spots = {}
+        self.bld_spots[(3,3)] = set()
+        self.bld_spots[(2,2)] = set()
         self.tclc = None
 
         self.reserved_trees = []
@@ -236,26 +237,59 @@ class CombinedWorldState:
 
     def get_wander_locations(self):
         self.wander_locations = []
+
+        if len(self.gatherCity()) == 0:
+            self.wander_locations.append((self.length/2, self.height/2))
+            return
         
-        if self.KINGDOM_EXTREME[1] == self.height:
-            wl1 = (int(self.length/2), self.KINGDOM_EXTREME[1] - 5)
-        else:
-            wl1 = (int(self.length/2), self.KINGDOM_EXTREME[1] + 5)
-        
-        n1 = self.get_nearby_travel(wl1)        
-        self.wander_locations.append(n1)
-
-        n2 = self.get_nearby_travel((int(self.length/2), int(self.height/2)))
-        self.wander_locations.append(n2)
-
-
+        # set wander locations to look like the following
+        """
+        . . . . . . . . . .
+        . . . . . . . . . .
+        . . . . . . . . . .
+        . . . . . . . . w1 .
+        . . . . . . . . . .
+        . . . . . . . . h .
+        . . . . . . w2 . . .
+        . . . . . . . . h .
+        . . . . . . . h . .
+        . . . . . w3. . . h
+        """
+        mean_x_city = int(statistics.mean([c.x for c in self.gatherCity()]))
+        mean_y_city = int(statistics.mean([c.y for c in self.gatherCity()]))
+        print(f"citylocation: {mean_x_city}, {mean_y_city}")
+        # Situation 1: kingdom extreme bottom right corner
         if self.KINGDOM_EXTREME[0] == self.length:
-            wl3 = (self.KINGDOM_EXTREME[0] - 5, int(self.height)/2)
+            x_extreme = min([c.x for c in self.gatherCity()])
+            if self.KINGDOM_EXTREME[1] == self.height:
+                # Above and to the right:
+                y_extreme = min([c.y for c in self.gatherCity()])
+                self.wander_locations.append((self.length - 6, y_extreme - WANDER_DIST))
+                self.wander_locations.append((x_extreme - WANDER_DIST/2, y_extreme - WANDER_DIST/2))
+                self.wander_locations.append((x_extreme - WANDER_DIST, self.height - 6))
+            else:
+                y_extreme = max([c.y for c in self.gatherCity()])
+                # To the right and below
+                self.wander_locations.append((self.length - 6, y_extreme + WANDER_DIST))
+                self.wander_locations.append((x_extreme - WANDER_DIST/2, y_extreme + WANDER_DIST/2))
+                self.wander_locations.append((x_extreme - WANDER_DIST, 5))
         else:
-            wl3 = (self.KINGDOM_EXTREME[0] + 5, int(self.height)/2)
+            x_extreme = max([c.x for c in self.gatherCity()])
+            if self.KINGDOM_EXTREME[1] == self.height:
+                # Above and to the right:
+                y_extreme = min([c.y for c in self.gatherCity()])
+                self.wander_locations.append((5, y_extreme - WANDER_DIST))
+                self.wander_locations.append((x_extreme + WANDER_DIST/2, y_extreme - WANDER_DIST/2))
+                self.wander_locations.append((x_extreme - WANDER_DIST, self.height - 6))
+            else:
+                y_extreme = max([c.y for c in self.gatherCity()])
+                # To the right and below
+                self.wander_locations.append((5, y_extreme + WANDER_DIST))
+                self.wander_locations.append((x_extreme + WANDER_DIST/2, y_extreme + WANDER_DIST/2))
+                self.wander_locations.append((x_extreme + WANDER_DIST, 5))
 
-        n3 = self.get_nearby_travel(wl3)        
-        self.wander_locations.append(n3)
+        # in this case, wander locations should be located torward the bottom of the map
+
     
     
     # LOCATIONS ARE ALWAYS WHERE VILLAGERS SHOULD GO.
@@ -285,61 +319,6 @@ class CombinedWorldState:
             trees_sorted[-(i + 1)].reserved=True
             self.reserved_trees.append(trees_sorted[-(i + 1)])
 
-    def get_alleyway_trees(self):
-        if len(self.x_alleyway_trees):
-            return self.x_alleyway_trees[0]
-        
-        if len(self.y_alleyway_trees):
-            return self.y_alleyway_trees[0]
-
-
-    def get_tree_and_target(self):
-        if len(self.reserved_trees) != 7:
-            return None
-
-        # first tree: x_alley_size
-        goal = 50 - self.x_alley_size
-        if self.reserved_trees[0].hp > goal:
-            print("On nuber 1!")
-            return (goal, self.reserved_trees[0])
-                
-        # second tree: y_alley_size
-        goal = 50 - self.y_alley_size
-        if self.reserved_trees[1].hp > goal:
-            print("On nuber 2!")
-            return (goal, self.reserved_trees[1])
-
-        # third tree: h of hk in x_alley_location
-        hkxa = self.xy_to_hk(self.x_alley_location)
-        
-        goal = hkxa[0]
-        if  self.reserved_trees[2].hp > goal:
-            return (goal, self.reserved_trees[2])
-
-        # fourth tree: k of hk in x_alley_location
-        goal = hkxa[1]
-        if  self.reserved_trees[3].hp > goal:
-            return (goal, self.reserved_trees[3])
-
-
-        hkya = self.xy_to_hk(self.y_alley_location)
-
-        # Fifth tree: h of hk in y_alley_location
-        goal = hkya[0]
-        if  self.reserved_trees[4].hp > goal:
-            return (goal, self.reserved_trees[4])
-
-        # Sixth tree: k of hk in y_alley_location
-        goal = hkya[1]
-        if  self.reserved_trees[5].hp > goal:
-            return (goal, self.reserved_trees[5])
-
-        # Seventh tree is for marking
-        if  self.reserved_trees[6].hp > 49:
-            return (49, self.reserved_trees[6])
-        
-        return None
-    
 
     def get_corner_resource(self, typeof, island_ids):
         # todo rewrite this
@@ -415,22 +394,11 @@ class CombinedWorldState:
 
             # new max square found at x,y
             #if self.building_helper[(x,y)] >= 5:
-            if self.building_helper[(x,y)] >= 4:
-                self.tc_spots.add((x,y))
+            if self.building_helper[(x,y)] >= 3:
+                self.bld_spots[(3,3)].add((x,y))
 
-        if x == 0:
-            self.x_alley_helper[(x, y)] = int(type(self.get_coord((x,y))) == Tree)
-            self.y_alley_helper[(y, x)] = int(type(self.identify_and_associate(y,x)) == Tree)
-        else:
-            if type(self.get_coord((x,y))) == Tree:
-                self.x_alley_helper[(x, y)] = self.x_alley_helper[(x - 1, y)] + 1
-            else:
-                self.x_alley_helper[(x, y)]  = 0
-            
-            if type(self.identify_and_associate(y,x)) == Tree:
-                self.y_alley_helper[(y, x)] = self.y_alley_helper[(y, x - 1)] + 1    
-            else:
-                self.y_alley_helper[(y, x)] = 0
+            if self.building_helper[(x,y)] >= 2:
+                self.bld_spots[(2,2)].add((x,y))
 
     def xy_to_hk(self, xy):
         hk = [xy[0], xy[1]]
@@ -454,7 +422,73 @@ class CombinedWorldState:
 
         return (xy[0], xy[1])
 
+    def translate_buildings_down(self):
+        new_bld_spots = {}
+        new_bld_spots[(2,2)] = set()
+        new_bld_spots[(3,3)] = set()
+        for x in range(self.length):
+            for y in range(self.height):
+                spot = (x,y)
+                for bld_size in self.bld_spots.keys():
+                    if spot in self.bld_spots[bld_size]:
+                        new_bld_spots[bld_size].add((spot[0] - (bld_size[0] - 1), spot[1] - (bld_size[1] - 1)))
+
+        self.bld_spots = new_bld_spots
+
+    def eliminate_bordering_buildings(self):
+        # Stop vils from building too close to other buildings.
+        copy_start = time.time()
+
+        copy_end = time.time()
+
+        print(f"Copy time: {copy_end - copy_start}")
+
+        for x in range(self.length):
+            for y in range(self.height):
+                spot = (x,y)
+                # eliminate building near other things
+                for bld_size in self.bld_spots.keys():
+                    if spot in self.bld_spots[bld_size]:
+                        # Let us list all possible locations to check:
+                        locations_to_check = []
+                        for dy in range(bld_size[1]):
+                            # all buildings are larger than dy
+                            dx = 2
+                            locations_to_check.append(
+                                (spot[0] + bld_size[0] + dx, 
+                                spot[1] + dy)
+                            )
+                            locations_to_check.append(
+                                (spot[0] - dx, 
+                                spot[1] + dy)
+                            )
+                        
+                        for dx in range(bld_size[0]):
+                            # all buildings are larger than dy
+                            dy = 2
+                            locations_to_check.append(
+                                (spot[0] + dx, 
+                                spot[1] + bld_size[1] + dy)
+                            )
+                            locations_to_check.append(
+                                (spot[0] + dx, 
+                                spot[1] - dy)
+                            )
+                        # Then add the corners:
+                        locations_to_check.append((spot[0] - 1, spot[1] - 1))
+                        locations_to_check.append((spot[0] - 1, spot[1] + bld_size[1] + 1))
+                        locations_to_check.append((spot[0] + bld_size[0] + 1, spot[1] - 1))
+                        locations_to_check.append((spot[0] + bld_size[0] + 1, spot[1] + bld_size[1] + 1))
+
+                        for loc in locations_to_check:
+                            if issubclass(type(self.get_coord(loc)), Building):
+                                self.bld_spots[bld_size].remove(spot)
+                                break
+
     def post_processing_steps(self):
+        self.translate_buildings_down()
+        self.eliminate_bordering_buildings()
+
         avg_empire_location = self.gatherEmpire() + self.gatherCity()
         x_mean = statistics.mean([obj.x for obj in avg_empire_location])
         y_mean = statistics.mean([obj.y for obj in avg_empire_location])
@@ -467,138 +501,18 @@ class CombinedWorldState:
 
 
         self.KINGDOM_EXTREME = (self.KINGDOM_CORNER[0] * self.length, self.KINGDOM_CORNER[1] * self.height)
-
-        #self.reserve_first_n_trees(7)
-        """
-        self.alleys_discovered = False
-        print(f"ext: {self.KINGDOM_EXTREME}")
-        if len(self.reserved_trees) == 7:
-            if self.reserved_trees[6].hp != 50:
-                self.recover_alleys_from_trees()
-                self.alleys_discovered = True
-        """
-
+        
         self.make_islands()
-        #self.mark_alleys()
-        #self.get_alley_entrances()
-
-        #self.save_input_trees()
         self.make_pois()
+        # Force buildings to be spaced out from one another.
 
-        tc_copy = deepcopy(self.tc_spots)
-        # eliminate building near other things
-        for spot in tc_copy:
-            distances = [max(c.x-spot[0], c.y - spot[1]) for c in self.gatherCity()]
-            if len(distances) == 0:
-                break
-            if min(distances) < 3:
-                self.tc_spots.remove(spot)
 
         self.get_wander_locations()
 
     def is_in_kingdom(self, x,y):
         return ((x < self.KINGDOM_XMAX and x >= self.KINGDOM_XMIN) 
             and (y < self.KINGDOM_YMAX and y >= self.KINGDOM_YMIN))
-
-    def mark_alleys(self):
-        if self.x_alley_location is None:
-            return
-        
-        self.x_alleyway_trees = []
-        self.y_alleyway_trees = []
-        self.num_archers_in_x_alley = 0
-        self.num_archers_in_y_alley = 0
-
-        y = self.x_alley_location[1]
-        xi = self.x_alley_location[0]
-        for x in range(self.x_alley_size):
-            obj = self.get_coord((xi - x,y))
-            obj.alley = True
-            if type(obj) == Tree:
-                if obj.reserved is False:
-                    self.x_alleyway_trees.append(obj)
-
-            if obj in self.gatherEmpire() and type(obj) == Archer:
-                self.num_archers_in_x_alley += 1
-                obj.in_x_alley = True
             
-            # also get nearby:
-            obj_low = self.get_coord((xi - x,y - 1))
-            if type(obj_low) == Tree:
-                obj_low.reserved = True
-            
-            obj_high = self.get_coord((xi - x,y + 1))
-            if type(obj_high) == Tree:
-                obj_high.reserved = True
-
-        x = self.y_alley_location[0]
-        yi = self.y_alley_location[1]
-        for y in range(self.y_alley_size):
-            obj = self.get_coord((x,yi - y))
-            obj.alley = True
-            
-            if type(obj) == Tree:
-                self.y_alleyway_trees.append(obj)
-            
-            if obj in self.gatherEmpire() and type(obj) == Archer:
-                self.num_archers_in_y_alley += 1
-                obj.in_y_alley = True
-
-
-            obj_low = self.get_coord((x - 1,yi - y))
-            if type(obj_low) == Tree:
-                obj_low.reserved = True
-            
-            obj_high = self.get_coord((x + 1,yi - y))
-            if type(obj_high) == Tree:
-                obj_high.reserved = True
-
-    def recover_alleys_from_trees(self):
-        print("recovering data from storetrees...")
-        self.x_alley_size = 50 - self.reserved_trees[0].hp
-        self.y_alley_size = 50 - self.reserved_trees[1].hp
-
-        hkxa = (self.reserved_trees[2].hp, self.reserved_trees[3].hp)
-        self.x_alley_location = self.hk_to_xy(hkxa)
-
-        hkya = (self.reserved_trees[4].hp, self.reserved_trees[5].hp)
-        self.y_alley_location = self.hk_to_xy(hkya)
-
-    def get_alley_entrances(self):
-        self.x_alley_entrance = None
-        self.x_alley_exit = None
-        self.y_alley_entrance = None
-        self.y_alley_exit = None
-        
-        objl = self.get_coord((self.x_alley_location[0] + 1, self.x_alley_location[1]))
-        objr = self.get_coord((self.x_alley_location[0] - (self.x_alley_size), self.x_alley_location[1]))
-
-        if self.is_traversable((objl.x, objl.y)) or objl in self.gatherEmpire():
-            self.x_alley_entrance = self.x_alley_location
-            self.x_alley_exit = (self.x_alley_location[0] - (self.x_alley_size - 1), self.x_alley_location[1])
-            
-        elif self.is_traversable((objr.x, objr.y)) or objr in self.gatherEmpire():
-            self.x_alley_entrance = (self.x_alley_location[0] - (self.x_alley_size - 1), self.x_alley_location[1])
-            self.x_alley_exit = self.x_alley_location
-        
-        objl = self.get_coord((self.y_alley_location[0], self.y_alley_location[1] + 1))
-        objr = self.get_coord((self.y_alley_location[0], self.y_alley_location[1] - (self.y_alley_size)))
-
-
-        if  self.is_traversable((objl.x, objl.y)) or objl in self.gatherEmpire():
-            self.y_alley_entrance = self.y_alley_location
-            self.y_alley_exit = (self.y_alley_location[0], self.y_alley_location[1] - self.y_alley_size + 1)
-            
-        elif self.is_traversable((objr.x, objr.y)) or objr in self.gatherEmpire():
-            self.y_alley_entrance = (self.y_alley_location[0], self.y_alley_location[1] - self.y_alley_size + 1)
-            self.y_alley_exit = self.y_alley_location
-        
-
-        
-            
-
-            
-
     def build_island(self, x, y, island_id = 0):
         # If the land is already visited
         # or there is no land or the
@@ -643,17 +557,7 @@ class CombinedWorldState:
     
         for i in range(self.length):
             for j in range(self.height):
-
-                if self.is_in_kingdom(i,j):
-                    if self.alleys_discovered == False:
-                        if self.x_alley_helper[(i,j)] > self.x_alley_size:
-                            self.x_alley_size = self.x_alley_helper[(i,j)]
-                            self.x_alley_location = (i,j)
-                        if self.y_alley_helper[(i,j)] > self.y_alley_size:
-                            self.y_alley_size = self.y_alley_helper[(i,j)]
-                            self.y_alley_location = (i,j)
-
-
+                
                 # If the land not visited
                 # then there will be atleast
                 # one closed island
@@ -730,12 +634,58 @@ class CombinedWorldState:
             self._make_pois_fexplore()
             self._make_pois_empire_corners()
 
+    # See if this villager can build
+    def processVillager(self, vil):
+        vil.vil_index = self.villager_index
+        self.villager_index+=1
+        for bld_size in self.bld_spots.keys():
+            if self.villager_can_build[bld_size]:
+                next
+            for dx in range(1, bld_size[0] + 1):
+                if (vil.x - (dx - 1), vil.y + 1) in self.bld_spots[bld_size]:
+                    vil.build_loc[bld_size] = (vil.x - (dx - 1), vil.y + 1)
+                    self.villager_can_build[bld_size] = True
+
+                if (vil.x - (dx - 1), vil.y - bld_size[1]) in self.bld_spots[bld_size]:
+                    vil.build_loc[bld_size] = (vil.x - (dx - 1), vil.y - bld_size[1])
+                    self.villager_can_build[bld_size] = True
+
+            for dy in range(1, bld_size[1] + 1):
+                if (vil.x + 1, vil.y - (dy - 1)) in self.bld_spots[bld_size]:
+                    vil.build_loc[bld_size] = (vil.x + 1, vil.y - (dy - 1))
+                    self.villager_can_build[bld_size] = True
+
+                if (vil.x - bld_size[0], vil.y - (dy - 1)) in self.bld_spots[bld_size]:
+                    vil.build_loc[bld_size] = (vil.x - bld_size[0], vil.y - (dy - 1))
+                    self.villager_can_build[bld_size] = True
+
+
     def gatherEmpire(self):
         if self.empire is None:
             all_units = [obj for obj in self.object_coord.values() if issubclass(type(obj), Unit)]
             self.empire = [u for u in all_units if u.team == self.team_id]
             self.empire = sorted(self.empire, key=lambda obj: obj.id, reverse=True)
+            for gi in range(len(self.empire)):
+                # useful for pairing units.
+                # we can cluster units that are nearby each other, id-wise.
+                self.empire[gi].citizen_no = gi
+                if type(self.empire[gi]) == Villager:
+                    self.processVillager(self.empire[gi])
+
         return self.empire
+
+    def gatherEnemyEmpire(self):
+        if self.enemyEmpire is None:
+            all_units = [obj for obj in self.object_coord.values() if issubclass(type(obj), Unit)]
+            self.enemyEmpire = [u for u in all_units if u.team != self.team_id]
+        
+        return self.enemyEmpire
+
+    def gatherEnemyCity(self):
+        if self.enemyCity is None:
+            all_buildings = [obj for obj in self.object_coord.values() if issubclass(type(obj), Building)]
+            self.enemyCity = list(set([b for b in all_buildings if b.team != self.team_id]))
+        return self.enemyCity
 
     def getPopulation(self, typeof):
         empire = self.gatherEmpire()
@@ -799,8 +749,7 @@ class CombinedWorldState:
                         char = ' '
 
                     print_string += color + char + extra
-                    if obj.alley and type(obj) == Tree:
-                        print_string = print_string[:-1] + COL_GOLD + '#' 
+
 
                 if issubclass(type(obj), Building):
                     color = teamcols[obj.team]
@@ -812,11 +761,20 @@ class CombinedWorldState:
                 if (x,y) in self.wander_locations:
                     print_string = print_string[:-2] + COL_GOLD + 'WL'
 
-#                if (x,y) == self.x_alley_entrance or (x,y) == self.y_alley_entrance:
-#                    print_string = print_string[:-1] +  'N'
+                """
+                if (x,y) in self.bld_spots[(3,3)]:
+                    print_string = print_string[:-1] + '&'
+                elif (x,y) in self.bld_spots[(2,2)]:
+                    print_string = print_string[:-1] + '^'
 
-#                if (x,y) == self.x_alley_exit or (x,y) == self.y_alley_exit:
-#                    print_string = print_string[:-1] +  'X'
+                for v in self.gatherEmpire():
+                    if type(v)==Villager:
+                        if v.build_loc.get((3,3)) is not None:
+                            if (x,y) == v.build_loc.get((3,3)):
+                                print_string = print_string[:-1] + 'B'
+                """
+
+
 
             print_string += (NORM + '\n')
         print(print_string)
@@ -868,8 +826,8 @@ def run(world_state, players, team_idx):
 
     end_time = time.time()
     print(f"end: {end_time - middle_time}")
+    
     """
-
     if ((end_time - middle_time) >.7):
         import json
         # create json object from dictionary
@@ -898,7 +856,7 @@ def run(world_state, players, team_idx):
 
         quit("Long proc time")
     """
-    #print(cws.x_alley_helper)
+    
     cws.render()
     print(cws.wood, cws.gold)
     print(players[team_idx])

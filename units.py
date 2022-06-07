@@ -58,6 +58,7 @@ class Unit:
 class Villager(Unit):
     def __init__(self, obj):
         super().__init__(obj)
+        self.build_loc = {} 
 
     @staticmethod
     def power(level):
@@ -89,7 +90,7 @@ class Villager(Unit):
             return
         
         # build houses if a house is needed
-        if cws.get_housing() < len(cws.gatherEmpire()) + 1.25 * len(cws.gatherCity()) - cws.num_buildings(House) :
+        if cws.get_housing() < len(cws.gatherEmpire()) + 1.5 * len(cws.gatherCity()) - 1.5 * cws.num_buildings(House) + 4:
             turn = BuildThing(self, cws, House)
             if turn:
                 self.turn = turn.apply(self)
@@ -105,8 +106,16 @@ class Villager(Unit):
                     self.turn = turn.apply(self)
                     return
 
+
+
         #if high enough population, ignore villager shuffling when possible:
         if cws.getPopulation(Villager) > 8:
+            if self.vil_index == 0:
+                turn = Wander(self, cws)
+                if turn:
+                    self.turn = turn.apply(self)
+                    return
+
             turn = AttackNearbyResource(self, cws, Resource)
             if turn:
                 self.turn = turn.apply(self)
@@ -174,25 +183,56 @@ class Archer(Unit):
         self.in_y_alley = False
 
     def follow_behaviors(self, cws):
-        #turn = DataMine(self, cws)
-        #if turn:
-        #    self.turn = turn.apply(self)
-        #    return
-#
-        #turn = ClearAlleys(self, cws)
-        #if turn:
-        #    self.turn = turn.apply(self)
-        #    return
-#
-        #turn = FillAlleyWays(self, cws)
-        #if turn:
-        #    self.turn = turn.apply(self)
-        #    return
+        if cws.percent_uncovered_f() < .7:
+            turn = ExploreFoliage(self, cws)
+            if turn:
+                self.turn = turn.apply(self)
+                return
 
-        return None
+        # determine if the next id is of a villager or an infantry.
+        # We do not care about others.
+        next_relevant_index = self.citizen_no + 1
 
+        while len(cws.gatherEmpire()) > next_relevant_index:
+            next_obj = cws.gatherEmpire()[next_relevant_index]
+            if type(next_obj) == Villager:
+                turn = Bodyguard(self, next_obj, cws)
+                if turn:
+                    self.turn = turn.apply(self)
+                    return
+                break
+
+            if type(next_obj) == Archer:
+                # for anything that is not 
+                break
+
+            next_relevant_index+=1
+
+
+        turn = ExploreGeneral(self, cws)
+        if turn:
+            self.turn = turn.apply(self)
+            return        
+
+        turn = GetNearbyResource(self, cws, Tree)
+        if turn:
+            self.turn = turn.apply(self)
+            return
+
+        self.turn = Move([0,0]).apply(self)
+        return
+        # r
+        # only 1 explorer
+
+    # Time ran out, see if we can get a basic behavior in:
     def follow_basic_behaviors(self, cws):
-        return None
+        # Attack any nearby villager
+
+        # then check enemies
+
+        # if that fails, move a random direction
+        turn = Move([random.randint(-1,1), random.randint(-1,1)])
+        self.turn = turn.apply(self)
 
     @staticmethod
     def type():
@@ -225,6 +265,26 @@ class Infantry(Unit):
             if turn:
                 self.turn = turn.apply(self)
                 return
+
+        # determine if the next id is of a villager or an infantry.
+        # We do not care about others.
+        next_relevant_index = self.citizen_no + 1
+
+        while len(cws.gatherEmpire()) > next_relevant_index:
+            next_obj = cws.gatherEmpire()[next_relevant_index]
+            if type(next_obj) == Villager:
+                turn = Bodyguard(self, next_obj, cws)
+                if turn:
+                    self.turn = turn.apply(self)
+                    return
+                break
+
+            if type(next_obj) == Infantry:
+                # for anything that is not 
+                break
+
+            next_relevant_index+=1
+
 
         turn = ExploreGeneral(self, cws)
         if turn:
@@ -275,11 +335,57 @@ class Calvary(Unit):
         super().__init__(obj)
 
     def follow_behaviors(self, cws):
-        return None
+        if cws.percent_uncovered_f() < .7:
+            turn = ExploreFoliage(self, cws)
+            if turn:
+                self.turn = turn.apply(self)
+                return
 
+        # determine if the next id is of a villager or an infantry.
+        # We do not care about others.
+        next_relevant_index = self.citizen_no + 1
+
+        while len(cws.gatherEmpire()) > next_relevant_index:
+            next_obj = cws.gatherEmpire()[next_relevant_index]
+            if type(next_obj) == Villager:
+                turn = Bodyguard(self, next_obj, cws)
+                if turn:
+                    self.turn = turn.apply(self)
+                    return
+                break
+
+            if type(next_obj) == Calvary:
+                # for anything that is not 
+                break
+
+            next_relevant_index+=1
+
+
+        turn = ExploreGeneral(self, cws)
+        if turn:
+            self.turn = turn.apply(self)
+            return        
+
+        turn = GetNearbyResource(self, cws, Tree)
+        if turn:
+            self.turn = turn.apply(self)
+            return
+
+        self.turn = Move([0,0]).apply(self)
+        return
+        # r
+        # only 1 explorer
+
+    # Time ran out, see if we can get a basic behavior in:
     def follow_basic_behaviors(self, cws):
-        return None
-    
+        # Attack any nearby villager
+
+        # then check enemies
+
+        # if that fails, move a random direction
+        turn = Move([random.randint(-1,1), random.randint(-1,1)])
+        self.turn = turn.apply(self)
+
     @staticmethod
     def type():
         return 'Calvary'

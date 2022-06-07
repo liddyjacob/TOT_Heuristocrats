@@ -1,8 +1,8 @@
 from pickle import FALSE
 import random
 from ai.heuristocrats.buildings import Building, Townhall, Barracks, Range, Stable, House
-from ai.heuristocrats.moves import Move, Build, Repair, Attack
-from ai.heuristocrats.utils import get_path_a_star, wander_goal
+from ai.heuristocrats.moves import Move, Build, Repair, Attack, DoNothing
+from ai.heuristocrats.utils import get_path_a_star, wander_goal, get_nearest_enemy
 from ai.heuristocrats.resources import Gold, Resource, Tree
 
 """
@@ -34,39 +34,21 @@ def BuildInitialTC(unit, cws):
 
 
 def BuildThing(unit, cws, typeof):
-    if cws.someone_building[typeof]:
-        return None
 
-    # make sure there is no buildings within 3 blocks:
-    free_to_build = True
-    for x in range(-3, 4):
-        for y in range(-3, 4):
-            if abs(x) == 3 or abs(y) == 3:
-                obj_type = type(cws.get_coord((x, y)))
-                if issubclass(obj_type, Building):
-                    free_to_build = False
-                    break
+    if cws.villager_can_build[typeof.size()]:
+        # If this villager was destin to build, then this would not be none
+        if unit.build_loc.get(typeof.size()) is not None:
+            print(f"Building {typeof} SHOULD WORK GUARENTEED!")
+            return Build(typeof, unit.build_loc[typeof.size()])
 
-    if free_to_build:
-        cws.someone_building[typeof] = True
-        # TODO CHECK IF UNIT CAN REACH ANY TCLC WITH ISLANDS!
-        if (unit.x - 1, unit.y - 1) in cws.tc_spots:
-            return Build(typeof, [unit.x - typeof.size()[0], unit.y - typeof.size()[1]])
-        if (unit.x + 3, unit.y - 1) in cws.tc_spots:
-            return Build(typeof, [unit.x + 1, unit.y - typeof.size()[1]])
-        if (unit.x - 1, unit.y + 3) in cws.tc_spots:
-            return Build(typeof, [unit.x - typeof.size()[0], unit.y + 1])
-        if (unit.x + 3, unit.y + 3) in cws.tc_spots:
-            return Build(typeof, [unit.x + 1, unit.y + 1])
-
-        cws.someone_building[typeof] = False
+    else:
 
     # If no one can build, send 3 guys to explore PER BUILD TYPE
-    if cws.num_vils_exploring[typeof] < 3:
-        cws.num_vils_exploring[typeof] += 1
-        return Wander(unit, cws)
+        if cws.num_vils_exploring[typeof] < 3:
+            cws.num_vils_exploring[typeof] += 1
+            return Wander(unit, cws)
 
-    return None
+        return None
 
 
 # todo move these nearby algorithms into 
@@ -74,6 +56,9 @@ def BuildThing(unit, cws, typeof):
 def RepairNearby(unit, cws):
     for i in range(-1,2):
         for j in range(-1,2):
+            # no corners!
+            if min(abs(i),abs(j)) == 1:
+                next
             obj = cws.get_coord((unit.x + i, unit.y + j))
             if obj in cws.gatherCity():
                 if obj.hp != obj.max_health():
@@ -113,98 +98,42 @@ def GetNearbyResource(unit, cws, typeof):
     return Move([step[0] - unit.x, step[1] - unit.y])
 
 # Become the bodyguard of a villager. 
-def Bodyguard(unit, cws):
-    # If we know the id of the current unit, we can find the nearest villager by ID.
-    pass
-
-# LOL Archers use trees to keep track of archer locations.
-def DataMine(unit, cws):
-    pair = cws.get_tree_and_target()
-    if pair is None:
+def Bodyguard(unit, otherUnit, cws):
+    # island intersection - see if the villager is even accessable.
+    island_intersect = unit.island_ids.intersection(otherUnit.island_ids)
+    if len(island_intersect) == 0:
         return None
 
-    (target_val, tree) = pair
-
-    #if tree.
-    if unit.within_range((tree.x, tree.y)):
-        if tree.hp > target_val:
-            tree.hp -= unit.power(cws.level[type(unit)])
-            return Attack(tree)
-
-    else:
-        nearest_tp = cws.get_nearby_travel((tree.x, tree.y))
-        if cws.get_island_id(nearest_tp) not in unit.island_ids:
-            print("AAA")
-            return None
-        
-        path = get_path_a_star(cws, (unit.x, unit.y), nearest_tp)
-        next = path[-2]
-        return Move([next[0] - unit.x, next[1] - unit.y])
-
-    return None
+    # First, check if we are within 12 units of the villager. If so, we can attack.
+    # we can do this by checking to see if the closest enemy to this one is within
+    # range.
+    distance_to_other = max(abs(unit.x - otherUnit.x), abs(unit.y - otherUnit.y))
 
 
-# Send archers to clear alleys stored with the trees
-def ClearAlleys(unit, cws):
-    tree = cws.get_alleyway_trees()
+    if distance_to_other <= 12:
+        if len(cws.gatherEnemyEmpire()) != 0:
+            nearest_enemy = get_nearest_enemy(unit, cws)
 
-    if tree is None:
-        return None
+            if nearest_enemy is not None:
+                if unit.within_range((nearest_enemy.x, nearest_enemy.y)):
+                    return Attack(nearest_enemy)
 
-    if unit.within_range((tree.x, tree.y)):
-        return Attack(tree)
-    
-    nearest_tp = cws.get_nearby_travel((tree.x, tree.y))
-    if cws.get_island_id(nearest_tp) not in unit.island_ids:
-        print("AAA")
-        return None
-        
-    path = get_path_a_star(cws, (unit.x, unit.y), nearest_tp)
+                # if they are not within range, but are still within 12 units, attack them.
+                if max(abs(otherUnit.x - nearest_enemy.x), abs(otherUnit.y - nearest_enemy.y)):
+                    if len(unit.island_ids.intersection(nearest_enemy.island_ids)) != 0:
+                        path = get_path_a_star(cws, (unit.x, unit.y), (nearest_enemy.x, nearest_enemy.y))
+                        next = path[-2]
+                        return Move([next[0] - unit.x, next[1] - unit.y])
+
+    # if we are within 3 units, do nothing.
+    if distance_to_other <= 3:
+        return DoNothing()
+
+    # If we are not within 12 units, then we should move back to the villager
+    path = get_path_a_star(cws, (unit.x, unit.y), (otherUnit.x, otherUnit.y))
     next = path[-2]
     return Move([next[0] - unit.x, next[1] - unit.y])
 
-def FillAlleyWays(unit, cws):
-    # T H I C C   A S S   B E H A V I O R.
-    # if there are archers to move into the x alley, do it.
-    if (cws.num_archers_in_x_alley / cws.x_alley_size) < .8:
-        # See if we are already in this alley:
-        if unit.in_x_alley:
-            # move over if possible.
-            direction_to_move = int(abs(cws.x_alley_entrance[0] - cws.x_alley_exit[0]) / (cws.x_alley_entrance[0] - cws.x_alley_exit[0]))
-
-            if direction_to_move * (unit.x - direction_to_move) >= direction_to_move * cws.x_alley_exit[0]:
-                if cws.is_traversable((unit.x - direction_to_move, unit.y)):
-                    print("moving in x place")
-                    return Move([-direction_to_move, 0])
-
-            return GuardInPlace(unit,cws)
-            # otherwise guard
-        else:
-            if cws.get_island_id(cws.x_alley_entrance) in unit.island_ids:
-                # we don't want too many archers headed to each alley
-                cws.num_archers_in_x_alley += 1
-                path = get_path_a_star(cws, (unit.x, unit.y), cws.x_alley_entrance)
-                next = path[-2]
-                return Move([next[0] - unit.x, next[1] - unit.y])
-
-    if (cws.num_archers_in_y_alley / cws.y_alley_size) < .8:
-        if unit.in_y_alley:
-            # move over if possible.
-            direction_to_move = int(abs(cws.y_alley_entrance[1] - cws.x_alley_exit[1]) / (cws.y_alley_entrance[1] - cws.y_alley_exit[1]))
-            
-            if direction_to_move * (unit.y - direction_to_move) >= cws.y_alley_location[1] :
-                if cws.is_traversable((unit.x, unit.y - direction_to_move)):
-                    print("moving in y place")
-                    return Move([0, -direction_to_move])
-            
-            return GuardInPlace(unit,cws)
-        else:
-            if cws.get_island_id(cws.y_alley_entrance) in unit.island_ids:
-                # we don't want too many archers headed to each alley
-                cws.num_archers_in_y_alley += 1
-                path = get_path_a_star(cws, (unit.x, unit.y), cws.y_alley_entrance)
-                next = path[-2]
-                return Move([next[0] - unit.x, next[1] - unit.y])
 
 def GuardInPlace(unit, cws):
     return None
@@ -224,8 +153,22 @@ def ExploreFoliage(unit, cws):
     return None
 
 def ExploreGeneral(unit, cws):
+    from ai.heuristocrats.units import Villager
+
     # Discover foliage if there is foliage to discover
     start = (unit.x, unit.y)
+
+    # We should kill any villagers of the enemy.
+    nearest_enemy = get_nearest_enemy(unit, cws, Villager)
+    if nearest_enemy is not None:
+        if unit.within_range((nearest_enemy.x, nearest_enemy.y)):
+            return Attack(nearest_enemy)
+
+        if max(abs(nearest_enemy.x - unit.x), abs(nearest_enemy.y - unit.y)) < 6:
+            if len(nearest_enemy.island_ids.intersection(unit.island_ids)) != 0:
+                path = get_path_a_star(cws, (unit.x, unit.y), (nearest_enemy.x, nearest_enemy.y))
+                next = path[-2]
+                return Move([next[0] - unit.x, next[1] - unit.y])
 
     for wp in cws.pois:
         for dx in [-1,0,1]:
@@ -247,5 +190,8 @@ def Wander(unit, cws):
         for dy in [-1,0,1]:
             if cws.get_island_id(wgoal) == cws.get_island_id((unit.x + dx, unit.y + dy)):
                 path = get_path_a_star(cws, (unit.x, unit.y), wgoal)
-                next = path[-2]
-                return Move([next[0] - unit.x, next[1] - unit.y])
+                if len(path) >=2:
+                    next = path[-2]
+                    return Move([next[0] - unit.x, next[1] - unit.y])
+
+    return None

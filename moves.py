@@ -11,13 +11,13 @@ class Move:
         return f"move: {self.direction}"
 
 class Build:
-    def __init__(self, type, direction):
-        self.direction = direction
+    def __init__(self, type, location):
+        self.location = location
         self.type = type
         self.rep = type.rep()
 
     def apply(self, unit):
-        return {"id": unit.id, "command":self.rep, "arg":self.direction}
+        return {"id": unit.id, "command":self.rep, "arg":[self.location[0], self.location[1]]}
 
     def __str__(self):
         return f"build: {self.rep} - {self.direction}"    
@@ -64,3 +64,14 @@ class Upgrade:
 
     def __str__(self):
         return f"Produced"   
+
+class DoNothing:
+    def __init__(self):
+        pass
+    
+    def apply(self, bld):
+        return {}
+
+    def __str__(self):
+        return f"Did Nothing."   
+ 
