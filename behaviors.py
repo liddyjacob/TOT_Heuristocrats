@@ -2,7 +2,7 @@ from pickle import FALSE
 import random
 from ai.heuristocrats.buildings import Building, Townhall, Barracks, Range, Stable, House
 from ai.heuristocrats.moves import Move, Build, Repair, Attack, DoNothing
-from ai.heuristocrats.utils import get_path_a_star, wander_goal, get_nearest_enemy
+from ai.heuristocrats.utils import get_path_a_star, wander_goal, get_nearest_enemy, get_nearest_enemy_building
 from ai.heuristocrats.resources import Gold, Resource, Tree
 
 """
@@ -149,6 +149,52 @@ def ExploreFoliage(unit, cws):
                     path = get_path_a_star(cws, start, wp)
                     next = path[-2]
                     return Move([next[0] - start[0], next[1] - start[1]])
+
+    return None
+
+# archers require non-archers to approach before attacking.
+#def ApproachArcher()
+
+
+def AttackInPlace(unit, cws):
+    nearest_enemy = get_nearest_enemy(unit, cws)
+    if nearest_enemy is not None:
+        if unit.within_range((nearest_enemy.x, nearest_enemy.y)):
+            return Attack(nearest_enemy)
+
+    nearest_bld = get_nearest_enemy_building(unit, cws)
+    if nearest_bld is not None:
+        if unit.within_range((nearest_enemy.x, nearest_enemy.y)):
+                return Attack(nearest_enemy)
+    
+    return None
+
+
+    
+
+# Send the unit to the boarder, if they are at the boarder
+def BoarderPatrol(unit, cws):
+    # always try attacking if there is something to attack
+    turn = AttackInPlace(unit, cws)
+    if turn is not None:
+        return turn
+
+    pos = cws.get_guard_position(unit.id)
+
+    if pos is None:
+        return None
+
+    if max(abs(pos[0]-unit.x), abs(pos[1] - unit.y)) <= 1:
+        turn = AttackInPlace(unit, cws)
+        if turn is not None:
+            return turn
+
+        return DoNothing()
+
+    if pos is not None:
+        path = get_path_a_star(cws, (unit.x, unit.y), pos)
+        next = path[-2]
+        return Move([next[0] - unit.x, next[1] - unit.y])
 
     return None
 

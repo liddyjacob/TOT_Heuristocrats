@@ -1,4 +1,5 @@
 from copy import deepcopy
+import multiprocessing
 from operator import ne
 from turtle import up
 from ai.heuristocrats.buildings import Barracks, Range, Townhall, Stable
@@ -10,6 +11,24 @@ import math
 import random
 from random import shuffle
 import time
+from ai.heuristocrats.profiling import PROFILER
+
+def get_vect_length(vect):
+    return math.sqrt(vect[0]**2 + vect[1]**2)
+
+def dot_product(vec1, vec2):
+    return sum([vec1[i] * vec2[i] for i in range(len(vec1))])
+
+def project_onto(from_vec, onto_vec):
+    multiplier = dot_product(from_vec, onto_vec) * dot_product(onto_vec, onto_vec)
+    return (multiplier*onto_vec[0], multiplier*onto_vec[1])
+
+def scalar_times_vector(scal, vect):
+    return tuple(scal*v for v in vect)
+
+def vector_add(vect1, vect2):
+    return tuple(vect1[i] + vect2[i] for i in range(len(vect1)))
+
 
 def reconstruct_path(cameFrom, current):
     total_path = [current]
@@ -18,9 +37,11 @@ def reconstruct_path(cameFrom, current):
         total_path.append(current)
     return total_path
 
-ASTART_LIMIT = .025
-def get_path_a_star(cws, start, end):
+def get_path_a_star(cws, start, end, rand=True, time_limit = .025, passthrough_units = False):
     # Only allow a select period of time for a* algorithm.
+    from ai.heuristocrats.units import Unit
+
+    PROFILER.profileStart('A*')
     openSet = set()
     openSet.add(start)
 
@@ -36,9 +57,11 @@ def get_path_a_star(cws, start, end):
     while len(openSet) != 0:
         curr = min(openSet, key=fScore.get)
         if curr == end:
+            PROFILER.profileEnd('A*')
             return reconstruct_path(cameFrom, curr)
         
-        if time.time() - start > ASTART_LIMIT:
+        if time.time() - start > time_limit:
+            PROFILER.profileEnd('A*')
             return reconstruct_path(cameFrom, curr)
 
         openSet.remove(curr)
@@ -56,7 +79,10 @@ def get_path_a_star(cws, start, end):
 
         for neighbor in moves:
             if neighbor != end and not cws.is_traversable(neighbor):
-                tentative_gScore = gScore[curr] + 100000
+                if passthrough_units and issubclass(type(cws.get_coord(neighbor)), Unit):
+                    tentative_gScore = gScore[curr] + 1
+                else:
+                    tentative_gScore = gScore[curr] + 100000
             else:
                 tentative_gScore = gScore[curr] + 1 
             
@@ -65,7 +91,11 @@ def get_path_a_star(cws, start, end):
             if tentative_gScore < gScore[neighbor]:
                 cameFrom[neighbor] = curr
                 gScore[neighbor] = tentative_gScore
-                heur_score = max(abs(neighbor[0] - end[0]), abs(neighbor[1] - end[1])) + random.random()/4
+                randomness = 0
+                if rand:
+                    randomness = random.random()/4
+                
+                heur_score = max(abs(neighbor[0] - end[0]), abs(neighbor[1] - end[1])) + randomness
                 fScore[neighbor] = tentative_gScore + heur_score
                 if neighbor not in openSet:
                     openSet.add(neighbor)
@@ -118,9 +148,6 @@ def get_path_a_star_any(cws, start, goal_type):
                 fScore[neighbor] = tentative_gScore + heur_score
                 if neighbor not in openSet:
                     openSet.add(neighbor)
-
-
-
 
 def valid_coordinate(x,y):
     return ((x >= 0) and x < WSIZE) and ((y >= 0) and y < WSIZE)
@@ -287,3 +314,17 @@ def get_nearest_enemy(unit, cws, subclass = None):
         abs(eu.x - unit.x), 
         abs(eu.y - unit.y)))
     return nearest_enemy
+
+def get_nearest_enemy_building(unit, cws, subclass = None):
+    from ai.heuristocrats.buildings import Building
+    if subclass is None:
+        subclass = Building
+
+    relevant_blds = [eb for eb in cws.gatherEnemyEmpire() if issubclass(type(eb), subclass)]
+    if len(relevant_blds) == 0:
+        return None
+    
+    nearest_b = min(relevant_blds, key=lambda eb: max(
+        abs(eb.x - unit.x), 
+        abs(eb.y - unit.y)))
+    return nearest_b

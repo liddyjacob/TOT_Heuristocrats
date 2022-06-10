@@ -1,18 +1,23 @@
 from asyncio.streams import FlowControlMixin
 from glob import glob
+from locale import normalize
 from pickle import UNICODE
 from tkinter.messagebox import NO
 from tracemalloc import start
+from turtle import pos
 from ai.shitutils import get_tiles, path_to_coord
 from enum import Enum
-from engine import SKEL_TICKS
+from engine import SKEL_TICKS, ID_MAX
 from render import TREE, render
 from ai.heuristocrats.units import Villager, Archer, Infantry, Calvary, Skeleton, Unit, reset_number_system
 from ai.heuristocrats.buildings import Townhall, Barracks, Range, Stable, House, Building
 from ai.heuristocrats.resources import MapObj, Resource, Tree, Gold,  Unknown, Unoccupied, MapObj
 from ai.heuristocrats.constants import *
 from ai.heuristocrats.annotated_world import ANNO_WORLD
-from ai.heuristocrats.utils import resource_plinko_board, upgrade_over_build
+from ai.heuristocrats.utils import get_vect_length, project_onto, resource_plinko_board, \
+    scalar_times_vector, upgrade_over_build, get_path_a_star, vector_add, scalar_times_vector, \
+    project_onto
+from ai.heuristocrats.profiling import PROFILER
 import time
 import statistics
 import math
@@ -176,19 +181,25 @@ class CombinedWorldState:
         return self.object_coord[(x,y)]
 
     def get_coord(self, pair):
-        x = pair[0]
-        y = pair[1]
-
-        return self.object_coord.get((x,y))
-
-    def is_traversable(self, pair):
+        PROFILER.profileStart("CWS.get_coord")
         x = pair[0]
         y = pair[1]
 
         obj = self.object_coord.get((x,y))
+        PROFILER.profileEnd("CWS.get_coord")
+        return obj
 
+    def is_traversable(self, pair):
+        PROFILER.profileStart("CWS.is_traversable")
+
+        x = pair[0]
+        y = pair[1]
+
+        obj = self.object_coord.get((x,y))
         # wonky system workout
-        return (type(obj) == Unoccupied or type(obj) == Unknown) and not obj.travel_ban
+        is_t = (type(obj) == Unoccupied or type(obj) == Unknown) and not obj.travel_ban
+        PROFILER.profileEnd("CWS.is_traversable")
+        return is_t
 
     # block a box from being travelled in: 
     def block_box(self, loc, size):
@@ -206,34 +217,128 @@ class CombinedWorldState:
 
         return housing
 
-    # LOCATIONS ARE ALWAYS WHERE VILLAGERS SHOULD GO.
-    # ALWAYS BOTTOM RIGHT. BRING THE VILLAGER THERE,
-    # THEN BUILD IN THE -1, -1 DIRECTION.
-    def get_training_location(self):
-        if not self.training_sorted:
-            self.training_spots = sorted(self.training_spots, key = lambda pair: max(abs(pair[0] - self.KINGDOM_EXTREME[0]),
-                abs(pair[1] - self.KINGDOM_EXTREME[1])), reverse=True)
-            self.training_sorted = True
-
-        train_location = self.training_spots[-1]
-        self.training_spots.pop()
-        return train_location
-
     # Find a point near x, y
-    def get_nearby_travel(self, pair):
+    def get_nearby_travel(self, pair, dist=4, rand=True, island=None):
         neighbors = []
-        for dx in range(-4,5):
-            for dy in range(-4, 5):
+        for dx in range(-dist,dist + 1):
+            for dy in range(-dist, dist + 1):
                 neighbors.append((pair[0] + dx, pair[1] + dy))
         
-        neighbors = sorted(neighbors, key = lambda npair: max(abs(npair[0] - pair[0]),
+        if rand:
+            neighbors = sorted(neighbors, key = lambda npair: max(abs(npair[0] - pair[0]),
                 abs(npair[1] - pair[1])) + random.random())
+        else:
+            neighbors = sorted(neighbors, key = lambda npair: max(abs(npair[0] - pair[0]),
+                abs(npair[1] - pair[1])))
 
         for n in neighbors:
             if self.is_traversable(n):
-                return n
+                if island is None:
+                    return n
+                
+                if self.get_island_id(n) == island:
+                    return n
 
         return None
+
+
+
+
+    # Build the 'frontier' of the map. This is where we will station units
+    def build_frontier(self):
+        if len(self.gatherCity()) == 0:
+            self.border_path = [(self.length/2 ,self.height/2)]
+            self.frontier_points = []
+            self.ecl = []
+            return
+
+        frontier_outline = []
+
+        city_vectors = [(c.x - self.KINGDOM_EXTREME[0], c.y - self.KINGDOM_EXTREME[1]) for c in self.gatherCity()]
+        boarder_vectors = []
+
+
+        if self.KINGDOM_EXTREME[0] == self.length:
+            if self.KINGDOM_EXTREME[1] == self.height:
+                boarder_vectors.append((-1, 0))
+                boarder_vectors.append((-1, -math.tan(math.pi/8)))
+                boarder_vectors.append((-1, -1))
+                boarder_vectors.append((-1, -math.tan(3*math.pi/8)))
+                boarder_vectors.append((0, -1))
+            else:
+                boarder_vectors.append((0, 1))
+                boarder_vectors.append((-math.tan(math.pi/8), 1))
+                boarder_vectors.append((-1, 1))
+                boarder_vectors.append((-math.tan(3*math.pi/8), 1))
+                boarder_vectors.append((-1, 0))                
+        else:
+            if self.KINGDOM_EXTREME[1] == self.height:
+                boarder_vectors.append((0, -1))
+                boarder_vectors.append((math.tan(math.pi/8), -1))
+                boarder_vectors.append((1, -1))
+                boarder_vectors.append((math.tan(3*math.pi/8), -1))
+                boarder_vectors.append((1, 0))
+            else:
+                boarder_vectors.append((1, 0))
+                boarder_vectors.append((1, math.tan(math.pi/8)))
+                boarder_vectors.append((1, 1))
+                boarder_vectors.append((1, math.tan(3*math.pi/8)))
+                boarder_vectors.append((0, 1))
+        
+        normalized_vectors = []
+        # next we normalize the vectors
+        for b in boarder_vectors:
+            dist = math.sqrt(b[0]**2 + b[1]**2)
+            normalized_vectors.append(tuple(bt/dist for bt in b))
+
+        self.ecl = []
+        # Then, for each vector, find the projection with the maximum size
+        for nb in normalized_vectors:
+            extreme_city_location = max(city_vectors,
+                key=lambda cv: get_vect_length(project_onto(cv, nb)))
+            self.ecl.append((int(self.KINGDOM_EXTREME[0] + extreme_city_location[0]),int(self.KINGDOM_EXTREME[1] + extreme_city_location[1])))
+            
+            # Need to extreme_city_location
+            border_extension = scalar_times_vector(
+                BORDER_DISTANCE + get_vect_length(project_onto(extreme_city_location, nb)), nb)
+            frontier_point_float = vector_add(border_extension, self.KINGDOM_EXTREME)
+            frontier_point_int = (int(frontier_point_float[0]), int(frontier_point_float[1]))
+            frontier_outline.append(frontier_point_int)
+
+        self.frontier_points = frontier_outline
+
+        print(self.frontier_points)
+        # Add kingdom_extreme to this vector and BORDER_SIZE* the original vector
+        # to get the boarder point
+        frontier_outline_neighbors = []
+
+
+        biggest_island = max(self.island_length, key=self.island_length.get)
+        # Join these boarder points in a path.
+        for point in frontier_outline:
+            # TODO only add points that are in the most common island.
+            np = self.get_nearby_travel(point, dist=8, rand=False, island=biggest_island)
+            if np is not None:
+                frontier_outline_neighbors.append(np)
+
+        # See what the common "island" is:
+
+        
+        self.border_path = []
+        # 
+        for i in range(len(frontier_outline_neighbors) - 1):
+            sub_path = get_path_a_star(self, frontier_outline_neighbors[i], 
+                frontier_outline_neighbors[i + 1], 
+                rand=False, time_limit=.1, passthrough_units = True)
+            sub_path.reverse()
+            self.border_path += sub_path[1:-1]
+
+    def get_guard_position(self, id):
+        position_number = int((((id * 129) % ID_MAX) * (len(self.border_path)) ) / ID_MAX)
+        if position_number == len(self.border_path):
+            position_number = len(self.border_path) - 1
+        print(position_number)
+        return self.border_path[position_number]
 
     def get_wander_locations(self):
         self.wander_locations = []
@@ -368,6 +473,10 @@ class CombinedWorldState:
             return 0
         else:
             return id
+
+    
+
+
 
     def process(self, x, y):
         #' New rules, just find the longest set of trees, and funnel archers into those.
@@ -504,6 +613,7 @@ class CombinedWorldState:
         
         self.make_islands()
         self.make_pois()
+        self.build_frontier()
         # Force buildings to be spaced out from one another.
 
 
@@ -520,6 +630,7 @@ class CombinedWorldState:
         # break function as there
         # will be no islands
         stack = [(x,y)]
+        self.island_length[island_id] = 0
 
         while stack:
             (xn,yn) = stack.pop()
@@ -528,12 +639,12 @@ class CombinedWorldState:
             if obj is not None:
                 if type(obj) != Unknown and type(obj) != Unoccupied:
                     obj.island_ids.add(island_id) 
+                    self.island_length[island_id] += 1
             
             if (xn < 0 or yn < 0 or
                 xn >= self.length or yn >= self.height or
                 self.island_ids.get((xn, yn)) is not None or
                 not self.is_traversable((xn, yn))):
-
                 continue
 
             
@@ -552,6 +663,7 @@ class CombinedWorldState:
     def make_islands(self):
     # unvisited.
         self.island_ids = {}
+        self.island_length = {}
         # To stores number of closed islands
         result = 0
     
@@ -572,35 +684,7 @@ class CombinedWorldState:
                     else:
                         self.island_ids[(i,j)] = 0
         self.num_islands = result
-
-
-    def make_forest(self):
-        self.island_ids = {}
-
     
-        # To stores number of closed islands
-        result = 0
-    
-        for i in range(self.length):
-            for j in range(self.height):
-                
-                # If the land not visited
-                # then there will be atleast
-                # one closed island
-                if (self.island_ids.get((i,j)) is None):
-                    if self.is_traversable((i, j)):
-
-                        result += 1
-                    
-                        # Mark all lands associated
-                        # with island visited.
-                        self.build_island(i, j, island_id = result)
-                    else:
-                        self.island_ids[(i,j)] = 0
-        self.num_islands = result
-
-#  Driver Code
-
     def _make_pois_fexplore(self):
         self.fexplore_waypoints = []         
 
@@ -614,7 +698,6 @@ class CombinedWorldState:
 
 
     def percent_uncovered_f(self):
-
         p =  len([obj for obj in self.object_coord.values() if type(obj) != Unknown]) / (self.length * self.height)
         return(p)
 
@@ -684,7 +767,7 @@ class CombinedWorldState:
     def gatherEnemyCity(self):
         if self.enemyCity is None:
             all_buildings = [obj for obj in self.object_coord.values() if issubclass(type(obj), Building)]
-            self.enemyCity = list(set([b for b in all_buildings if b.team != self.team_id]))
+            self.enemyCity = [b for b in all_buildings if b.team != self.team_id]
         return self.enemyCity
 
     def getPopulation(self, typeof):
@@ -761,6 +844,16 @@ class CombinedWorldState:
                 if (x,y) in self.wander_locations:
                     print_string = print_string[:-2] + COL_GOLD + 'WL'
 
+                if (x,y) in self.ecl:
+                    #print(ecl)
+                    print_string = print_string[:-2] + COL_GOLD + 'EC'
+
+                #if (x,y) in self.frontier_points:
+                #    #print(ecl)
+                #    print_string = print_string[:-2] + COL_GOLD + 'FP'
+
+                if (x,y) in self.border_path:
+                    print_string = print_string[:-1] + COL_GOLD + 'P'
                 """
                 if (x,y) in self.bld_spots[(3,3)]:
                     print_string = print_string[:-1] + '&'
@@ -779,7 +872,15 @@ class CombinedWorldState:
             print_string += (NORM + '\n')
         print(print_string)
 
+TURN = 0
+
 def run(world_state, players, team_idx):
+    global TURN
+    TURN += 1
+    if TURN % 10 == 0:
+        PROFILER.on()
+    else:
+        PROFILER.off()
     NUMBER_SYSTEM = {}
     start_time = time.time()
 
@@ -806,10 +907,10 @@ def run(world_state, players, team_idx):
     # Leave .05 seconds for buildings
     unit_commands = []
     for u in empire:
-        if time.time() - start_time < .68:
+        if time.time() - start_time - PROFILER.time_spent < .68:
             m = u.execute(cws)
             unit_commands.append(m)
-        elif time.time() - start_time < .85:
+        elif time.time() - start_time - PROFILER.time_spent < .85:
             m = u.execute_basic(cws)
             unit_commands.append(m)
         else:
@@ -817,7 +918,7 @@ def run(world_state, players, team_idx):
 
     building_commands = []
     for b in cws.gatherCity():
-        if time.time() - start_time < .95:
+        if time.time() - start_time -  PROFILER.time_spent < .95:
             m = b.execute(cws)
             building_commands.append(m)
         else:
@@ -858,22 +959,17 @@ def run(world_state, players, team_idx):
     """
     
     cws.render()
-    print(cws.wood, cws.gold)
     print(players[team_idx])
-
     print(f"Population: {len(cws.gatherEmpire())} / {cws.get_housing()}")
-
-    if upgrade_over_build(cws, Infantry):
-        print("todo upgrade inf")
-
-    if upgrade_over_build(cws, Archer):
-        print("todo upgrade archer")
 
     if len(cws.reserved_trees) == 7:
         for i in range(7):
             print(cws.reserved_trees[i].hp)
 
     reset_number_system()
+
+    PROFILER.profilePrint()
+    PROFILER.profileReset()
 
     return (unit_commands + building_commands)
     # Determine what the foliage is for unexplored tiles.

@@ -2,7 +2,7 @@ from pickle import GLOBAL
 from socket import timeout
 from threading import current_thread
 from ai.heuristocrats.moves import Move, Build, Repair, Attack
-from ai.heuristocrats.utils import gold_per_turn_needed, handler, get_resource_from_id, get_next_building
+from ai.heuristocrats.utils import gold_per_turn_needed, handler, get_resource_from_id, get_next_building, get_nearest_enemy_building
 from ai.heuristocrats.buildings import Townhall, Barracks, Range, Stable, House
 from ai.heuristocrats.resources import Gold, Resource, Tree
 from ai.heuristocrats.behaviors import *
@@ -164,7 +164,10 @@ class Villager(Unit):
             return
 
         # if that fails, attack an enemy
-
+        nearest_enemy = get_nearest_enemy(self, cws)
+        if nearest_enemy is not None:
+            if self.within_range((nearest_enemy.x, nearest_enemy.y)):
+                return Attack(nearest_enemy).apply(self)
 
         # if that fails, move a random direction
         turn = Move([random.randint(-1,1), random.randint(-1,1)])
@@ -188,12 +191,23 @@ class Archer(Unit):
             if turn:
                 self.turn = turn.apply(self)
                 return
+        
 
+
+        turn = BoarderPatrol(self, cws)
+        if turn:
+            self.turn = turn.apply(self)
+            return
+
+
+        next_relevant_index = self.citizen_id + 1
         # determine if the next id is of a villager or an infantry.
         # We do not care about others.
-        next_relevant_index = self.citizen_no + 1
 
         while len(cws.gatherEmpire()) > next_relevant_index:
+
+
+
             next_obj = cws.gatherEmpire()[next_relevant_index]
             if type(next_obj) == Villager:
                 turn = Bodyguard(self, next_obj, cws)
@@ -226,11 +240,22 @@ class Archer(Unit):
 
     # Time ran out, see if we can get a basic behavior in:
     def follow_basic_behaviors(self, cws):
-        # Attack any nearby villager
 
-        # then check enemies
+        nearest_enemy = get_nearest_enemy(self, cws, Villager)
+        if nearest_enemy is not None:
+            if self.within_range((nearest_enemy.x, nearest_enemy.y)):
+                return Attack(nearest_enemy).apply(self)
 
-        # if that fails, move a random direction
+        nearest_enemy = get_nearest_enemy(self, cws)
+        if nearest_enemy is not None:
+            if self.within_range((nearest_enemy.x, nearest_enemy.y)):
+                return Attack(nearest_enemy).apply(self)
+
+        nearest_building = get_nearest_enemy_building(self, cws)
+        if nearest_building is not None:
+            if self.within_range((nearest_building.x, nearest_building.y)):
+                return Attack(nearest_building).apply(self)
+
         turn = Move([random.randint(-1,1), random.randint(-1,1)])
         self.turn = turn.apply(self)
 
@@ -285,11 +310,15 @@ class Infantry(Unit):
 
             next_relevant_index+=1
 
-
         turn = ExploreGeneral(self, cws)
         if turn:
             self.turn = turn.apply(self)
-            return        
+            return
+
+        turn = BoarderPatrol(self, cws)
+        if turn:
+            self.turn = turn.apply(self)
+            return 
 
         turn = GetNearbyResource(self, cws, Tree)
         if turn:
@@ -303,14 +332,24 @@ class Infantry(Unit):
 
     # Time ran out, see if we can get a basic behavior in:
     def follow_basic_behaviors(self, cws):
-        # Attack any nearby villager
 
-        # then check enemies
+        nearest_enemy = get_nearest_enemy(self, cws, Villager)
+        if nearest_enemy is not None:
+            if self.within_range((nearest_enemy.x, nearest_enemy.y)):
+                return Attack(nearest_enemy).apply(self)
 
-        # if that fails, move a random direction
+        nearest_enemy = get_nearest_enemy(self, cws)
+        if nearest_enemy is not None:
+            if self.within_range((nearest_enemy.x, nearest_enemy.y)):
+                return Attack(nearest_enemy).apply(self)
+
+        nearest_building = get_nearest_enemy_building(self, cws)
+        if nearest_building is not None:
+            if self.within_range((nearest_building.x, nearest_building.y)):
+                return Attack(nearest_building).apply(self)
+
         turn = Move([random.randint(-1,1), random.randint(-1,1)])
         self.turn = turn.apply(self)
-        
 
     @staticmethod
     def power(i):
@@ -378,11 +417,22 @@ class Calvary(Unit):
 
     # Time ran out, see if we can get a basic behavior in:
     def follow_basic_behaviors(self, cws):
-        # Attack any nearby villager
 
-        # then check enemies
+        nearest_enemy = get_nearest_enemy(self, cws, Villager)
+        if nearest_enemy is not None:
+            if self.within_range((nearest_enemy.x, nearest_enemy.y)):
+                return Attack(nearest_enemy).apply(self)
 
-        # if that fails, move a random direction
+        nearest_enemy = get_nearest_enemy(self, cws)
+        if nearest_enemy is not None:
+            if self.within_range((nearest_enemy.x, nearest_enemy.y)):
+                return Attack(nearest_enemy).apply(self)
+
+        nearest_building = get_nearest_enemy_building(self, cws)
+        if nearest_building is not None:
+            if self.within_range((nearest_building.x, nearest_building.y)):
+                return Attack(nearest_building).apply(self)
+
         turn = Move([random.randint(-1,1), random.randint(-1,1)])
         self.turn = turn.apply(self)
 
