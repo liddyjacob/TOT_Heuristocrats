@@ -101,8 +101,6 @@ def get_path_a_star(cws, start, end, rand=True, time_limit = .025, passthrough_u
                     openSet.add(neighbor)
 
 
-
-
 # only allow .025 seconds before returning
 def get_path_a_star_any(cws, start, goal_type):
     openSet = set()
@@ -148,6 +146,18 @@ def get_path_a_star_any(cws, start, goal_type):
                 fScore[neighbor] = tentative_gScore + heur_score
                 if neighbor not in openSet:
                     openSet.add(neighbor)
+
+def get_step(from_pair, to_pair):
+    x_dir = 0
+    if from_pair[0] != to_pair[0]:
+        x_dir = int(abs(to_pair[0] - from_pair[0])/(to_pair[0] - from_pair[0]))
+    
+    y_dir = 0
+    if from_pair[1] != to_pair[1]:
+        y_dir = int(abs(to_pair[1] - from_pair[1])/(to_pair[1] - from_pair[1]))
+    
+    return (x_dir, y_dir)
+    
 
 def valid_coordinate(x,y):
     return ((x >= 0) and x < WSIZE) and ((y >= 0) and y < WSIZE)

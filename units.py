@@ -65,6 +65,12 @@ class Villager(Unit):
         return 1
     
     def follow_behaviors(self, cws):
+        # if that fails, attack an enemy
+        nearest_enemy = get_nearest_enemy(self, cws)
+        if nearest_enemy is not None:
+            if self.within_range((nearest_enemy.x, nearest_enemy.y)):
+                return Attack(nearest_enemy).apply(self)
+
         if len(cws.gatherCity()) == 0:
             # no purpose in building so early without gold:
             if cws.gold <= 10:
@@ -105,8 +111,6 @@ class Villager(Unit):
                 if turn:
                     self.turn = turn.apply(self)
                     return
-
-
 
         #if high enough population, ignore villager shuffling when possible:
         if cws.getPopulation(Villager) > 8:
@@ -158,16 +162,24 @@ class Villager(Unit):
     # Time ran out, see if we can get a basic behavior in:
     def follow_basic_behaviors(self, cws):
         # Get Anything
-        turn = AttackNearbyResource(self, cws, Resource)
-        if turn:
-            self.turn = turn.apply(self)
-            return
-
         # if that fails, attack an enemy
         nearest_enemy = get_nearest_enemy(self, cws)
         if nearest_enemy is not None:
             if self.within_range((nearest_enemy.x, nearest_enemy.y)):
                 return Attack(nearest_enemy).apply(self)
+
+        turn = AttackNearbyResource(self, cws, Resource)
+        if turn:
+            self.turn = turn.apply(self)
+            return
+
+            #if high enough population, ignore villager shuffling when possible:
+        if cws.getPopulation(Villager) > 8:
+            if self.vil_index == 0:
+                turn = WanderBasic(self, cws)
+                if turn:
+                    self.turn = turn.apply(self)
+                    return
 
         # if that fails, move a random direction
         turn = Move([random.randint(-1,1), random.randint(-1,1)])
@@ -192,8 +204,6 @@ class Archer(Unit):
                 self.turn = turn.apply(self)
                 return
         
-
-
         turn = BoarderPatrol(self, cws)
         if turn:
             self.turn = turn.apply(self)
@@ -240,6 +250,11 @@ class Archer(Unit):
 
     # Time ran out, see if we can get a basic behavior in:
     def follow_basic_behaviors(self, cws):
+    
+        turn = BoarderPatrolBasic(self, cws)
+        if turn:
+            self.turn = turn.apply(self)
+            return
 
         nearest_enemy = get_nearest_enemy(self, cws, Villager)
         if nearest_enemy is not None:
@@ -332,6 +347,23 @@ class Infantry(Unit):
 
     # Time ran out, see if we can get a basic behavior in:
     def follow_basic_behaviors(self, cws):
+        next_relevant_index = self.citizen_no + 1
+
+        while len(cws.gatherEmpire()) > next_relevant_index:
+            next_obj = cws.gatherEmpire()[next_relevant_index]
+            if type(next_obj) == Villager:
+                turn = BodyguardBasic(self, next_obj, cws)
+                if turn:
+                    self.turn = turn.apply(self)
+                    return
+                break
+
+            if type(next_obj) == Infantry:
+                # for anything that is not 
+                break
+
+            next_relevant_index+=1
+
 
         nearest_enemy = get_nearest_enemy(self, cws, Villager)
         if nearest_enemy is not None:

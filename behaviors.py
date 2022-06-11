@@ -2,7 +2,7 @@ from pickle import FALSE
 import random
 from ai.heuristocrats.buildings import Building, Townhall, Barracks, Range, Stable, House
 from ai.heuristocrats.moves import Move, Build, Repair, Attack, DoNothing
-from ai.heuristocrats.utils import get_path_a_star, wander_goal, get_nearest_enemy, get_nearest_enemy_building
+from ai.heuristocrats.utils import get_path_a_star, wander_goal, get_nearest_enemy, get_nearest_enemy_building, get_step
 from ai.heuristocrats.resources import Gold, Resource, Tree
 
 """
@@ -134,6 +134,40 @@ def Bodyguard(unit, otherUnit, cws):
     next = path[-2]
     return Move([next[0] - unit.x, next[1] - unit.y])
 
+def BodyguardBasic(unit, otherUnit, cws):
+   # island intersection - see if the villager is even accessable.
+    island_intersect = unit.island_ids.intersection(otherUnit.island_ids)
+    if len(island_intersect) == 0:
+        return None
+
+    # First, check if we are within 12 units of the villager. If so, we can attack.
+    # we can do this by checking to see if the closest enemy to this one is within
+    # range.
+    distance_to_other = max(abs(unit.x - otherUnit.x), abs(unit.y - otherUnit.y))
+
+
+    if distance_to_other <= 12:
+        if len(cws.gatherEnemyEmpire()) != 0:
+            nearest_enemy = get_nearest_enemy(unit, cws)
+
+            if nearest_enemy is not None:
+                if unit.within_range((nearest_enemy.x, nearest_enemy.y)):
+                    return Attack(nearest_enemy)
+
+                # if they are not within range, but are still within 12 units, attack them.
+                if max(abs(otherUnit.x - nearest_enemy.x), abs(otherUnit.y - nearest_enemy.y)):
+                    if len(unit.island_ids.intersection(nearest_enemy.island_ids)) != 0:
+                        step = get_step((unit.x, unit.y), (nearest_enemy.x, nearest_enemy.y))
+                        return Move([step[0], step[1]])
+
+    # if we are within 3 units, do nothing.
+    if distance_to_other <= 3:
+        return DoNothing()
+
+    # If we are not within 12 units, then we should move back to the villager
+    step = get_step((unit.x, unit.y), (otherUnit.x, otherUnit.y))
+    return Move([step[0], step[1]])
+
 
 def GuardInPlace(unit, cws):
     return None
@@ -198,6 +232,30 @@ def BoarderPatrol(unit, cws):
 
     return None
 
+def BoarderPatrolBasic(unit, cws):
+    # always try attacking if there is something to attack
+    turn = AttackInPlace(unit, cws)
+    if turn is not None:
+        return turn
+
+    pos = cws.get_guard_position(unit.id)
+
+    if pos is None:
+        return None
+
+    if max(abs(pos[0]-unit.x), abs(pos[1] - unit.y)) <= 1:
+        turn = AttackInPlace(unit, cws)
+        if turn is not None:
+            return turn
+
+        return DoNothing()
+
+    if pos is not None:
+        step = get_step((unit.x, unit.y), pos)
+        return Move([step[0], step[1]])
+
+    return None
+
 def ExploreGeneral(unit, cws):
     from ai.heuristocrats.units import Villager
 
@@ -239,5 +297,19 @@ def Wander(unit, cws):
                 if len(path) >=2:
                     next = path[-2]
                     return Move([next[0] - unit.x, next[1] - unit.y])
+
+    return None
+
+def WanderBasic(unit, cws):
+    wgoal = wander_goal(cws)
+
+    if wgoal is None:
+        return None
+
+    for dx in [-1,0,1]:
+        for dy in [-1,0,1]:
+            if cws.get_island_id(wgoal) == cws.get_island_id((unit.x + dx, unit.y + dy)):
+                step = get_step((unit.x, unit.y), wgoal)
+                return Move([step[0], step[1]])
 
     return None

@@ -181,25 +181,18 @@ class CombinedWorldState:
         return self.object_coord[(x,y)]
 
     def get_coord(self, pair):
-        PROFILER.profileStart("CWS.get_coord")
         x = pair[0]
         y = pair[1]
 
-        obj = self.object_coord.get((x,y))
-        PROFILER.profileEnd("CWS.get_coord")
-        return obj
+        return self.object_coord.get((x,y))
 
     def is_traversable(self, pair):
-        PROFILER.profileStart("CWS.is_traversable")
-
         x = pair[0]
         y = pair[1]
 
         obj = self.object_coord.get((x,y))
         # wonky system workout
-        is_t = (type(obj) == Unoccupied or type(obj) == Unknown) and not obj.travel_ban
-        PROFILER.profileEnd("CWS.is_traversable")
-        return is_t
+        return (type(obj) == Unoccupied or type(obj) == Unknown) and not obj.travel_ban
 
     # block a box from being travelled in: 
     def block_box(self, loc, size):
@@ -338,6 +331,8 @@ class CombinedWorldState:
         if position_number == len(self.border_path):
             position_number = len(self.border_path) - 1
         print(position_number)
+        if position_number < 0:
+            return None
         return self.border_path[position_number]
 
     def get_wander_locations(self):
@@ -900,17 +895,18 @@ def run(world_state, players, team_idx):
     print(f"mid: {middle_time - start_time}")
 
     empire = cws.gatherEmpire()
-
+    random.shuffle(empire)
 
     # Leave .1 sec for buffer
     # Only give the first n players 
     # Leave .05 seconds for buildings
     unit_commands = []
     for u in empire:
-        if time.time() - start_time - PROFILER.time_spent < .68:
+        if time.time() - start_time - PROFILER.time_spent < .75:
             m = u.execute(cws)
             unit_commands.append(m)
         elif time.time() - start_time - PROFILER.time_spent < .85:
+            print("running out of time...")
             m = u.execute_basic(cws)
             unit_commands.append(m)
         else:
@@ -923,7 +919,6 @@ def run(world_state, players, team_idx):
             building_commands.append(m)
         else:
             break
-
 
     end_time = time.time()
     print(f"end: {end_time - middle_time}")
