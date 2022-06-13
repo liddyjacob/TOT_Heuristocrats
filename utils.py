@@ -274,7 +274,7 @@ def wander_goal(cws):
     if mod_time <= 7:
         return cws.wander_locations[1]
     
-    return cws.wander_locations[1]
+    return cws.wander_locations[2]
 
 
 def get_next_building(cws):
