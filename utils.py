@@ -267,14 +267,17 @@ def upgrade_over_build(cws, typeof):
     return power_per_gold < (upgrade_per_gold * 2)
 
 def wander_goal(cws):
+    if len(cws.wander_locations) == 0:
+        return None
+
     mod_time = int(time.time()/10) % 12
     # return the corners of the empire, cycling on the mod_time value m
     if mod_time <= 5:
-        return cws.wander_locations[0]
+        return cws.wander_locations[0 % len(cws.wander_locations)]
     if mod_time <= 7:
-        return cws.wander_locations[1]
+        return cws.wander_locations[1 % len(cws.wander_locations)]
     
-    return cws.wander_locations[2]
+    return cws.wander_locations[2 % len(cws.wander_locations)]
 
 
 def get_next_building(cws):
