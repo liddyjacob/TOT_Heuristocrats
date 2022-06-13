@@ -11,7 +11,7 @@ import math
 import random
 from random import shuffle
 import time
-from ai.heuristocrats.profiling import PROFILER
+
 
 def get_vect_length(vect):
     return math.sqrt(vect[0]**2 + vect[1]**2)
@@ -41,7 +41,6 @@ def get_path_a_star(cws, start, end, rand=True, time_limit = .025, passthrough_u
     # Only allow a select period of time for a* algorithm.
     from ai.heuristocrats.units import Unit
 
-    PROFILER.profileStart('A*')
     openSet = set()
     openSet.add(start)
 
@@ -57,11 +56,9 @@ def get_path_a_star(cws, start, end, rand=True, time_limit = .025, passthrough_u
     while len(openSet) != 0:
         curr = min(openSet, key=fScore.get)
         if curr == end:
-            PROFILER.profileEnd('A*')
             return reconstruct_path(cameFrom, curr)
         
         if time.time() - start > time_limit:
-            PROFILER.profileEnd('A*')
             return reconstruct_path(cameFrom, curr)
 
         openSet.remove(curr)

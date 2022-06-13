@@ -17,7 +17,7 @@ from ai.heuristocrats.annotated_world import ANNO_WORLD
 from ai.heuristocrats.utils import get_vect_length, project_onto, resource_plinko_board, \
     scalar_times_vector, upgrade_over_build, get_path_a_star, vector_add, scalar_times_vector, \
     project_onto
-from ai.heuristocrats.profiling import PROFILER
+#from ai.heuristocrats.profiling import PROFILER
 import time
 import statistics
 import math
@@ -79,7 +79,7 @@ def initializeObject(obj):
     quit(f"ERROR REGISTERING OBJECT. UNKNOWN TYPE: {obj['type']}")
 
 def name():
-    return "Commrads"
+    return "ChknFarm"
 
 # iterate over the map once to avoid redundancy of things that 
 # require iteraton.
@@ -867,15 +867,9 @@ class CombinedWorldState:
             print_string += (NORM + '\n')
         print(print_string)
 
-TURN = 0
 
 def run(world_state, players, team_idx):
-    global TURN
-    TURN += 1
-    if TURN % 10 == 0:
-        PROFILER.on()
-    else:
-        PROFILER.off()
+
     NUMBER_SYSTEM = {}
     start_time = time.time()
 
@@ -902,10 +896,10 @@ def run(world_state, players, team_idx):
     # Leave .05 seconds for buildings
     unit_commands = []
     for u in empire:
-        if time.time() - start_time - PROFILER.time_spent < .75:
+        if time.time() - start_time < .75:
             m = u.execute(cws)
             unit_commands.append(m)
-        elif time.time() - start_time - PROFILER.time_spent < .85:
+        elif time.time() - start_time < .85:
             print("running out of time...")
             m = u.execute_basic(cws)
             unit_commands.append(m)
@@ -914,7 +908,7 @@ def run(world_state, players, team_idx):
 
     building_commands = []
     for b in cws.gatherCity():
-        if time.time() - start_time -  PROFILER.time_spent < .95:
+        if time.time() - start_time < .95:
             m = b.execute(cws)
             building_commands.append(m)
         else:
@@ -953,7 +947,7 @@ def run(world_state, players, team_idx):
         quit("Long proc time")
     """
     
-    cws.render()
+    #cws.render()
     print(players[team_idx])
     print(f"Population: {len(cws.gatherEmpire())} / {cws.get_housing()}")
 
@@ -963,8 +957,8 @@ def run(world_state, players, team_idx):
 
     reset_number_system()
 
-    PROFILER.profilePrint()
-    PROFILER.profileReset()
+    #PROFILER.profilePrint()
+    #PROFILER.profileReset()
 
     return (unit_commands + building_commands)
     # Determine what the foliage is for unexplored tiles.

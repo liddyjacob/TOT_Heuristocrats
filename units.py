@@ -28,9 +28,6 @@ class Unit:
         self.travel_ban = True
 
     def execute(self, cws):
-        self.number = NUMBER_SYSTEM[type(self)]
-        NUMBER_SYSTEM[type(self)] = NUMBER_SYSTEM[type(self)] + 1
-
         self.follow_behaviors(cws)
 
         if self.turn == {}:
@@ -97,10 +94,11 @@ class Villager(Unit):
         
         # build houses if a house is needed
         if cws.get_housing() < len(cws.gatherEmpire()) + 1.5 * len(cws.gatherCity()) - 1.5 * cws.num_buildings(House) + 4:
-            turn = BuildThing(self, cws, House)
-            if turn:
-                self.turn = turn.apply(self)
-                return
+            if cws.can_afford(House.buildcost()):
+                turn = BuildThing(self, cws, House)
+                if turn:
+                    self.turn = turn.apply(self)
+                    return
 
         # lol build town halls everywhere
         buildingtype = get_next_building(cws)
@@ -136,7 +134,7 @@ class Villager(Unit):
         else:
             gold_req = gold_per_turn_needed(cws)
 
-            if self.number <= math.ceil(gold_req):
+            if self.vil_index <= math.ceil(gold_req):
                 # first, see if there is any gold nearvy
                 turn = AttackNearbyResource(self, cws, Gold)
                 if turn:
@@ -168,6 +166,12 @@ class Villager(Unit):
             if self.within_range((nearest_enemy.x, nearest_enemy.y)):
                 return Attack(nearest_enemy).apply(self)
 
+        # see if there are any buildings nearby to repair:
+        turn = RepairNearby(self,cws)
+        if turn:
+            self.turn = turn.apply(self)
+            return
+
         turn = AttackNearbyResource(self, cws, Resource)
         if turn:
             self.turn = turn.apply(self)
@@ -198,12 +202,6 @@ class Archer(Unit):
         self.in_y_alley = False
 
     def follow_behaviors(self, cws):
-        if cws.percent_uncovered_f() < .7:
-            turn = ExploreFoliage(self, cws)
-            if turn:
-                self.turn = turn.apply(self)
-                return
-        
         turn = BoarderPatrol(self, cws)
         if turn:
             self.turn = turn.apply(self)
@@ -250,7 +248,6 @@ class Archer(Unit):
 
     # Time ran out, see if we can get a basic behavior in:
     def follow_basic_behaviors(self, cws):
-    
         turn = BoarderPatrolBasic(self, cws)
         if turn:
             self.turn = turn.apply(self)
@@ -306,6 +303,11 @@ class Infantry(Unit):
                 self.turn = turn.apply(self)
                 return
 
+        turn = AttackInPlace(self, cws)
+        if turn is not None:
+            self.turn = turn.apply(self)
+            return
+
         # determine if the next id is of a villager or an infantry.
         # We do not care about others.
         next_relevant_index = self.citizen_no + 1
@@ -325,11 +327,6 @@ class Infantry(Unit):
 
             next_relevant_index+=1
 
-        turn = ExploreGeneral(self, cws)
-        if turn:
-            self.turn = turn.apply(self)
-            return
-
         turn = BoarderPatrol(self, cws)
         if turn:
             self.turn = turn.apply(self)
@@ -340,13 +337,17 @@ class Infantry(Unit):
             self.turn = turn.apply(self)
             return
 
-        self.turn = Move([0,0]).apply(self)
         return
         # r
         # only 1 explorer
 
     # Time ran out, see if we can get a basic behavior in:
     def follow_basic_behaviors(self, cws):
+        turn = AttackInPlace(self, cws)
+        if turn is not None:
+            self.turn = turn.apply(self)
+            return
+
         next_relevant_index = self.citizen_no + 1
 
         while len(cws.gatherEmpire()) > next_relevant_index:
@@ -406,11 +407,10 @@ class Calvary(Unit):
         super().__init__(obj)
 
     def follow_behaviors(self, cws):
-        if cws.percent_uncovered_f() < .7:
-            turn = ExploreFoliage(self, cws)
-            if turn:
-                self.turn = turn.apply(self)
-                return
+        turn = AttackInPlace(self, cws)
+        if turn is not None:
+            self.turn = turn.apply(self)
+            return
 
         # determine if the next id is of a villager or an infantry.
         # We do not care about others.
@@ -449,7 +449,6 @@ class Calvary(Unit):
 
     # Time ran out, see if we can get a basic behavior in:
     def follow_basic_behaviors(self, cws):
-
         nearest_enemy = get_nearest_enemy(self, cws, Villager)
         if nearest_enemy is not None:
             if self.within_range((nearest_enemy.x, nearest_enemy.y)):

@@ -198,8 +198,8 @@ def AttackInPlace(unit, cws):
 
     nearest_bld = get_nearest_enemy_building(unit, cws)
     if nearest_bld is not None:
-        if unit.within_range((nearest_enemy.x, nearest_enemy.y)):
-                return Attack(nearest_enemy)
+        if unit.within_range((nearest_bld.x, nearest_bld.y)):
+                return Attack(nearest_bld)
     
     return None
 
@@ -217,6 +217,15 @@ def BoarderPatrol(unit, cws):
 
     if pos is None:
         return None
+
+
+    nearest_bld = get_nearest_enemy_building(unit, cws)
+
+    if nearest_bld is not None:
+        if max(abs(pos[0]-nearest_bld.x), abs(pos[1] - nearest_bld.y)) <= 8:
+            path = get_path_a_star(cws, (unit.x, unit.y), (nearest_bld.x, nearest_bld.y))
+            next = path[-2]
+            return Move([next[0] - unit.x, next[1] - unit.y])
 
     if max(abs(pos[0]-unit.x), abs(pos[1] - unit.y)) <= 1:
         turn = AttackInPlace(unit, cws)
