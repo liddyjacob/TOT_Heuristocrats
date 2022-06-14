@@ -202,44 +202,21 @@ class Archer(Unit):
         self.in_y_alley = False
 
     def follow_behaviors(self, cws):
+        turn = AttackInPlace(self, cws)
+        if turn is not None:
+            self.turn = turn.apply(self)
+            return
+
         turn = BoarderPatrol(self, cws)
         if turn:
             self.turn = turn.apply(self)
             return
 
-
-        next_relevant_index = self.citizen_id + 1
-        # determine if the next id is of a villager or an infantry.
-        # We do not care about others.
-
-        while len(cws.gatherEmpire()) > next_relevant_index:
-
-
-
-            next_obj = cws.gatherEmpire()[next_relevant_index]
-            if type(next_obj) == Villager:
-                turn = Bodyguard(self, next_obj, cws)
-                if turn:
-                    self.turn = turn.apply(self)
-                    return
-                break
-
-            if type(next_obj) == Archer:
-                # for anything that is not 
-                break
-
-            next_relevant_index+=1
-
-
-        turn = ExploreGeneral(self, cws)
-        if turn:
-            self.turn = turn.apply(self)
-            return        
-
         turn = GetNearbyResource(self, cws, Tree)
         if turn:
             self.turn = turn.apply(self)
             return
+
 
         self.turn = Move([0,0]).apply(self)
         return
@@ -412,35 +389,16 @@ class Calvary(Unit):
             self.turn = turn.apply(self)
             return
 
-        # determine if the next id is of a villager or an infantry.
-        # We do not care about others.
-        next_relevant_index = self.citizen_no + 1
-
-        while len(cws.gatherEmpire()) > next_relevant_index:
-            next_obj = cws.gatherEmpire()[next_relevant_index]
-            if type(next_obj) == Villager:
-                turn = Bodyguard(self, next_obj, cws)
-                if turn:
-                    self.turn = turn.apply(self)
-                    return
-                break
-
-            if type(next_obj) == Calvary:
-                # for anything that is not 
-                break
-
-            next_relevant_index+=1
-
-
-        turn = ExploreGeneral(self, cws)
+        turn = BoarderPatrol(self, cws)
         if turn:
             self.turn = turn.apply(self)
-            return        
+            return 
 
         turn = GetNearbyResource(self, cws, Tree)
         if turn:
             self.turn = turn.apply(self)
             return
+
 
         self.turn = Move([0,0]).apply(self)
         return
