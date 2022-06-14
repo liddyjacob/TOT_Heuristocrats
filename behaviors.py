@@ -38,7 +38,6 @@ def BuildThing(unit, cws, typeof):
     if cws.villager_can_build[typeof.size()]:
         # If this villager was destin to build, then this would not be none
         if unit.build_loc.get(typeof.size()) is not None:
-            print(f"Building {typeof} SHOULD WORK GUARENTEED!")
             return Build(typeof, unit.build_loc[typeof.size()])
 
     else:

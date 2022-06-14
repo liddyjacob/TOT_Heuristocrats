@@ -238,10 +238,10 @@ def get_resource_from_id(id):
     hash = (17 * id) % 13
 
     if hash < WOOD_LEVEL:
-        print("getting tree")
+        #print("getting tree")
         return Tree
     else:
-        print("getting gold")
+        #print("getting gold")
         return Gold
     
 # determine if it is more economical to upgrade a set of units or build a new one:

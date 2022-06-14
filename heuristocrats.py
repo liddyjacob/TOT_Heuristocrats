@@ -98,7 +98,7 @@ def iterate_over_map(cws):
             ANNO_WORLD.update(x,y,obj)
 
     ANNO_WORLD.modify_world_state(cws)
-    print(max_square)
+    #print(max_square)
             # S
 
 class POI(Enum):
@@ -300,7 +300,7 @@ class CombinedWorldState:
 
         self.frontier_points = frontier_outline
 
-        print(self.frontier_points)
+        #print(self.frontier_points)
         # Add kingdom_extreme to this vector and BORDER_SIZE* the original vector
         # to get the boarder point
         frontier_outline_neighbors = []
@@ -330,7 +330,7 @@ class CombinedWorldState:
         position_number = int((((id * 129) % ID_MAX) * (len(self.border_path)) ) / ID_MAX)
         if position_number == len(self.border_path):
             position_number = len(self.border_path) - 1
-        print(position_number)
+        #print(position_number)
         if position_number < 0:
             return None
         return self.border_path[position_number]
@@ -357,7 +357,7 @@ class CombinedWorldState:
         """
         mean_x_city = int(statistics.mean([c.x for c in self.gatherCity()]))
         mean_y_city = int(statistics.mean([c.y for c in self.gatherCity()]))
-        print(f"citylocation: {mean_x_city}, {mean_y_city}")
+        #print(f"citylocation: {mean_x_city}, {mean_y_city}")
         # Situation 1: kingdom extreme bottom right corner
         if self.KINGDOM_EXTREME[0] == self.length:
             x_extreme = min([c.x for c in self.gatherCity()])
@@ -447,7 +447,7 @@ class CombinedWorldState:
                         self.resources_ordered[typeof][id].pop()
                 return rval
 
-        print(f'requested but did not exist: {typeof}')
+        #print(f'requested but did not exist: {typeof}')
         return None
 
     # set the coordinate to the new 
@@ -541,12 +541,6 @@ class CombinedWorldState:
 
     def eliminate_bordering_buildings(self):
         # Stop vils from building too close to other buildings.
-        copy_start = time.time()
-
-        copy_end = time.time()
-
-        print(f"Copy time: {copy_end - copy_start}")
-
         for x in range(self.length):
             for y in range(self.height):
                 spot = (x,y)
@@ -880,6 +874,9 @@ def run(world_state, players, team_idx):
     # Always iterate over the map ONCE at the beginning to update units
     # and stuff.
     iterate_over_map(cws)
+
+    if len(cws.gatherEmpire() + cws.gatherCity()) == 0:
+        return []
     cws.post_processing_steps()
     resource_plinko_board(cws)
     #print(REGISTRY)
@@ -896,11 +893,10 @@ def run(world_state, players, team_idx):
     # Leave .05 seconds for buildings
     unit_commands = []
     for u in empire:
-        if time.time() - start_time < .75:
+        if time.time() - start_time < .79:
             m = u.execute(cws)
             unit_commands.append(m)
-        elif time.time() - start_time < .85:
-            print("running out of time...")
+        elif time.time() - start_time < .91:
             m = u.execute_basic(cws)
             unit_commands.append(m)
         else:
@@ -908,7 +904,7 @@ def run(world_state, players, team_idx):
 
     building_commands = []
     for b in cws.gatherCity():
-        if time.time() - start_time < .95:
+        if time.time() - start_time < .96:
             m = b.execute(cws)
             building_commands.append(m)
         else:
@@ -950,10 +946,6 @@ def run(world_state, players, team_idx):
     #cws.render()
     print(players[team_idx])
     print(f"Population: {len(cws.gatherEmpire())} / {cws.get_housing()}")
-
-    if len(cws.reserved_trees) == 7:
-        for i in range(7):
-            print(cws.reserved_trees[i].hp)
 
     reset_number_system()
 
