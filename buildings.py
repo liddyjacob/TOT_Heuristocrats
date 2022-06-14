@@ -150,7 +150,7 @@ class House(Building):
 
     @staticmethod
     def buildcost():
-        return((90,40))
+        return((30,0))
 
     @staticmethod
     def producecost():

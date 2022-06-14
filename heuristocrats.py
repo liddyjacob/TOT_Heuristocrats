@@ -863,7 +863,7 @@ class CombinedWorldState:
 
 
 def run(world_state, players, team_idx):
-
+    ANNO_WORLD.reset()
     NUMBER_SYSTEM = {}
     start_time = time.time()
 

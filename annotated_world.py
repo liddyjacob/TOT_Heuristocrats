@@ -6,6 +6,9 @@ class FoliageRegisry:
         self.registry = {}
         self.size = size
 
+    def reset(self):
+        self.registry = {}
+
     # update the registry with an object:
     def update(self, x, y, obj):
         if x > HWSIZE:
@@ -48,6 +51,9 @@ class FoliageRegisry:
 class AnnotatedWorld:
     def __init__(self):
         self.foliage_registry = FoliageRegisry()
+
+    def reset(self):
+        self.foliage_registry.reset()
 
     def update(self, x,y,obj):
         self.foliage_registry.update(x,y,obj)
