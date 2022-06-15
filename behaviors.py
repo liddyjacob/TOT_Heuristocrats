@@ -229,17 +229,29 @@ def BoarderPatrol(unit, cws):
             next = path[-2]
             return Move([next[0] - unit.x, next[1] - unit.y])
 
-    if max(abs(pos[0]-unit.x), abs(pos[1] - unit.y)) <= 1:
-        turn = AttackInPlace(unit, cws)
-        if turn is not None:
-            return turn
-
-        return DoNothing()
+    from ai.heuristocrats.units import Archer
+    nearest_archer = get_nearest_enemy(unit, cws, Archer)
+    if nearest_archer is not None:
+        if nearest_archer.within_range((unit.x, unit.y)):
+            if len(nearest_archer.island_ids.intersection(unit.island_ids)) != 0:
+                path = get_path_a_star(cws, (unit.x, unit.y), ((nearest_archer.x, nearest_archer.y)))
+                next = path[-2]
+                return Move([next[0] - unit.x, next[1] - unit.y])
 
     if pos is not None:
+        obj = cws.get_coord(pos)
+        from ai.heuristocrats.units import Unit
+        if issubclass(type(obj), Unit) or issubclass(type(obj), Resource):
+            if (len(obj.island_ids.intersection(unit.island_ids)) == 0):
+                return None
+        else:
+            if cws.get_island_id(pos) not in unit.island_ids:
+                return None
+        
         path = get_path_a_star(cws, (unit.x, unit.y), pos)
-        next = path[-2]
-        return Move([next[0] - unit.x, next[1] - unit.y])
+        if len(path) >= 2:
+            next = path[-2]
+            return Move([next[0] - unit.x, next[1] - unit.y])
 
     return None
 
@@ -254,12 +266,13 @@ def BoarderPatrolBasic(unit, cws):
     if pos is None:
         return None
 
-    if max(abs(pos[0]-unit.x), abs(pos[1] - unit.y)) <= 1:
-        turn = AttackInPlace(unit, cws)
-        if turn is not None:
-            return turn
-
-        return DoNothing()
+    from ai.heuristocrats.units import Archer
+    nearest_archer = get_nearest_enemy(unit, cws, Archer)
+    if nearest_archer is not None:
+        if nearest_archer.within_range((unit.x, unit.y)):
+            if len(nearest_archer.island_ids.intersection(unit.island_ids)) != 0:
+                step = get_step((unit.x, unit.y), pos)
+                return Move([step[0], step[1]])
 
     if pos is not None:
         step = get_step((unit.x, unit.y), pos)

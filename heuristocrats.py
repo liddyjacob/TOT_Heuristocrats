@@ -22,7 +22,9 @@ import time
 import statistics
 import math
 import random
+import os
 from copy import deepcopy
+import json
 
 # TODO USE MINUTE NUMBER MOD 3 TO DETERMINE 'WANDERING' LOCATION FOR VILLAGERS!
 # NOTE THIS SHOULD ALWAYS BE INSIDE THE KINGDOM.
@@ -79,7 +81,7 @@ def initializeObject(obj):
     quit(f"ERROR REGISTERING OBJECT. UNKNOWN TYPE: {obj['type']}")
 
 def name():
-    return "ChknFarm"
+    return "cpypstas"
 
 # iterate over the map once to avoid redundancy of things that 
 # require iteraton.
@@ -863,9 +865,10 @@ class CombinedWorldState:
 
 
 def run(world_state, players, team_idx):
+    start_time = time.time()
+
     ANNO_WORLD.reset()
     NUMBER_SYSTEM = {}
-    start_time = time.time()
 
     Unit.our_kingdom = team_idx 
     cws = CombinedWorldState(world_state, players, team_idx)
@@ -893,10 +896,10 @@ def run(world_state, players, team_idx):
     # Leave .05 seconds for buildings
     unit_commands = []
     for u in empire:
-        if time.time() - start_time < .79:
+        if time.time() - start_time < .74:
             m = u.execute(cws)
             unit_commands.append(m)
-        elif time.time() - start_time < .91:
+        elif time.time() - start_time < .88:
             m = u.execute_basic(cws)
             unit_commands.append(m)
         else:
@@ -904,7 +907,7 @@ def run(world_state, players, team_idx):
 
     building_commands = []
     for b in cws.gatherCity():
-        if time.time() - start_time < .96:
+        if time.time() - start_time < .93:
             m = b.execute(cws)
             building_commands.append(m)
         else:
@@ -944,13 +947,43 @@ def run(world_state, players, team_idx):
     """
     
     #cws.render()
-    print(players[team_idx])
-    print(f"Population: {len(cws.gatherEmpire())} / {cws.get_housing()}")
-
+    #print(players[team_idx])
+    #print(f"Population: {len(cws.gatherEmpire())} / {cws.get_housing()}")
+    """
     reset_number_system()
+    try:
+    
+        if time.time() - start_time < .81:
+            word_list = "You wanna fight? There is no point in fighting if you already lost you useless norse animal, you can't even insult people without cursing, you have no future and we both know it, you know who else knows it? Your parents! You're the biggest dissapointment in their life after Ghost Busters 3. After 15 years on Earth you still haven't learnt how to cook a proper food and behave in the society. Nobody will miss you after your death. You might say: \"But my best friend!\" He won't even attend your funeral, because he is as clowny as you are. You live like a clown you will die like a clown. I will be surprised if you even care because you have nothing to lose you've achieved nothing. Cya. One time I had a kid come over to my house and tell me that my house was small and boring. So then I told him that my house was small because I had an amazing secret basement full of games and toys that I never tell anyone about. This kid wanted to see it really badly at that point, so I told him to wait outside the basement door so I could get the games and toys ready for him. I took a bucket of glitter mixed in with super glue and set it up on the top of the basement door. I gave the kid the cue to come inside, and when he opened the door, I stabbed him.".split(' ')
+            game_folder = max(filter(os.path.isdir, glob('../games/*')), key=os.path.getmtime)
+            current_frame_file = max([f for f in filter(os.path.isfile, glob(game_folder + '/[0-9]*.json')) if 'out' not in f], key=os.path.getmtime)
+            print(f'time wasted here: {time.time() - start_time}')
 
-    #PROFILER.profilePrint()
-    #PROFILER.profileReset()
+            with open(current_frame_file, 'r+') as framedata:
+                jsondata = json.load(framedata)
 
+                for i in range(4):
+                    curr_name = jsondata['players'][i]['name']
+                    if curr_name[0] == '>':
+                        mod = int(time.time()/4) % len(word_list)
+                        end_index = curr_name.find('\r')
+                        new_name = '>' + word_list[mod] + curr_name[end_index:]
+                        jsondata['players'][i]['name'] = new_name
+                    
+
+                if time.time() - start_time > .95:
+                    framedata.close()
+                    return (unit_commands + building_commands)
+
+                framedata.seek(0)
+                json.dump(jsondata, framedata)
+                framedata.truncate()
+
+        #PROFILER.profilePrint()
+        #PROFILER.profileReset()
+        
+    except:
+        return (unit_commands + building_commands)
+    """
     return (unit_commands + building_commands)
     # Determine what the foliage is for unexplored tiles.
