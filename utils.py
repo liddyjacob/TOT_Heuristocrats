@@ -330,7 +330,7 @@ def get_nearest_enemy_building(unit, cws, subclass = None):
     if subclass is None:
         subclass = Building
 
-    relevant_blds = [eb for eb in cws.gatherEnemyEmpire() if issubclass(type(eb), subclass)]
+    relevant_blds = [eb for eb in cws.gatherEnemyCity() if issubclass(type(eb), subclass)]
     if len(relevant_blds) == 0:
         return None
     
