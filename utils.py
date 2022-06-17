@@ -305,11 +305,8 @@ def get_next_building(cws):
     if cws.num_buildings(Stable) < 2:
         return Stable
 
-    # Then another townhall
-    if (cws.num_buildings(Stable) + cws.num_buildings(Archer)) % 2:
-        return Range
-    else:
-        return Stable
+    return Range
+
 
 def get_nearest_enemy(unit, cws, subclass = None):
     from ai.heuristocrats.units import Unit

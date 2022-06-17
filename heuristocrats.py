@@ -52,6 +52,8 @@ def initializeObject(obj):
         return Villager(obj)
 
     if obj["type"] == 'a':
+        if obj['team'] == -2:
+            return Skeleton(obj)
         return Archer(obj)
 
     if obj["type"] == 'i':
@@ -75,13 +77,11 @@ def initializeObject(obj):
     if obj["type"] == 'h':
         return House(obj)
 
-    if obj["type"] == 'p':
-        return Skeleton(obj)
 
     quit(f"ERROR REGISTERING OBJECT. UNKNOWN TYPE: {obj['type']}")
 
 def name():
-    return "cpypstas"
+    return ">cpypstas"
 
 # iterate over the map once to avoid redundancy of things that 
 # require iteraton.
@@ -752,6 +752,7 @@ class CombinedWorldState:
         if self.enemyEmpire is None:
             all_units = [obj for obj in self.object_coord.values() if issubclass(type(obj), Unit)]
             self.enemyEmpire = [u for u in all_units if u.team != self.team_id]
+            print(len(self.enemyEmpire))
         
         return self.enemyEmpire
 
@@ -879,14 +880,54 @@ def run(world_state, players, team_idx):
     iterate_over_map(cws)
 
     if len(cws.gatherEmpire() + cws.gatherCity()) == 0:
+        try:
+        
+            if time.time() - start_time < .81:
+                word_list = "You wanna fight? There is no point in fighting if you already lost you useless norse animal, you can't even insult people without cursing, you have no future and we both know it, you know who else knows it? Your parents! You're the biggest dissapointment in their life after Ghost Busters 3. After 15 years on Earth you still haven't learnt how to cook a proper food and behave in the society. Nobody will miss you after your death. You might say: \"But my best friend!\" He won't even attend your funeral, because he is as clowny as you are. You live like a clown you will die like a clown. I will be surprised if you even care because you have nothing to lose you've achieved nothing. Cya. One time I had a kid come over to my house and tell me that my house was small and boring. So then I told him that my house was small because I had an amazing secret basement full of games and toys that I never tell anyone about. This kid wanted to see it really badly at that point, so I told him to wait outside the basement door so I could get the games and toys ready for him. I took a bucket of glitter mixed in with super glue and set it up on the top of the basement door. I gave the kid the cue to come inside, and when he opened the door, I stabbed him.".split(' ')
+                game_folder = max(filter(os.path.isdir, glob('../games/*')), key=os.path.getmtime)
+                current_frame_file = max([f for f in filter(os.path.isfile, glob(game_folder + '/[0-9]*.json')) if 'out' not in f], key=os.path.getmtime)
+                print(f'time wasted here: {time.time() - start_time}')
+
+                with open(current_frame_file, 'r+') as framedata:
+                    jsondata = json.load(framedata)
+
+                    for i in range(4):
+                        curr_name = jsondata['players'][i]['name']
+                        if curr_name[0] == '>':
+                            mod = int(time.time()/4) % len(word_list)
+                            end_index = curr_name.find('\r')
+                            new_name = '>' + word_list[mod] + curr_name[end_index:]
+                            jsondata['players'][i]['name'] = new_name
+                        
+
+                    if time.time() - start_time > .95:
+                        framedata.close()
+                        return (unit_commands + building_commands)
+
+                    framedata.seek(0)
+                    json.dump(jsondata, framedata)
+                    framedata.truncate()
+
+            #PROFILER.profilePrint()
+            #PROFILER.profileReset()
+            
+        except:
+            pass
+
         return []
+    
     cws.post_processing_steps()
     resource_plinko_board(cws)
     #print(REGISTRY)
 
     middle_time = time.time()
+    mid = middle_time - start_time
 
     print(f"mid: {middle_time - start_time}")
+    if (mid > .6):
+        with open('midlog.log', 'r+') as ml:
+            ml.write("Long mid: {mid}")
+
 
     empire = cws.gatherEmpire()
     random.shuffle(empire)
@@ -896,25 +937,31 @@ def run(world_state, players, team_idx):
     # Leave .05 seconds for buildings
     unit_commands = []
     for u in empire:
-        if time.time() - start_time < .74:
+        if time.time() - start_time < .72:
             m = u.execute(cws)
+            if m.get('command') == 'k':
+                print(type(u))
+                print('killing...')
             unit_commands.append(m)
-        elif time.time() - start_time < .88:
+        elif time.time() - start_time < .9:
             m = u.execute_basic(cws)
+            if m.get('command') == 'k':
+                print(type(u))
+                print('killing...')
             unit_commands.append(m)
         else:
             break
 
     building_commands = []
     for b in cws.gatherCity():
-        if time.time() - start_time < .93:
+        if time.time() - start_time < .95:
             m = b.execute(cws)
             building_commands.append(m)
         else:
             break
 
     end_time = time.time()
-    print(f"end: {end_time - middle_time}")
+    print(f"end: {end_time - start_time}")
     
     """
     if ((end_time - middle_time) >.7):
@@ -945,45 +992,82 @@ def run(world_state, players, team_idx):
 
         quit("Long proc time")
     """
+
+    if len(cws.gatherEmpire() + cws.gatherCity()) <= 10:
+        try:
+        
+            if time.time() - start_time < .81:
+                word_list = "You wanna fight? There is no point in fighting if you already lost you useless norse animal, you can't even insult people without cursing, you have no future and we both know it, you know who else knows it? Your parents! You're the biggest dissapointment in their life after Ghost Busters 3. After 15 years on Earth you still haven't learnt how to cook a proper food and behave in the society. Nobody will miss you after your death. You might say: \"But my best friend!\" He won't even attend your funeral, because he is as clowny as you are. You live like a clown you will die like a clown. I will be surprised if you even care because you have nothing to lose you've achieved nothing. Cya. One time I had a kid come over to my house and tell me that my house was small and boring. So then I told him that my house was small because I had an amazing secret basement full of games and toys that I never tell anyone about. This kid wanted to see it really badly at that point, so I told him to wait outside the basement door so I could get the games and toys ready for him. I took a bucket of glitter mixed in with super glue and set it up on the top of the basement door. I gave the kid the cue to come inside, and when he opened the door, I stabbed him.".split(' ')
+                game_folder = max(filter(os.path.isdir, glob('../games/*')), key=os.path.getmtime)
+                current_frame_file = max([f for f in filter(os.path.isfile, glob(game_folder + '/[0-9]*.json')) if 'out' not in f], key=os.path.getmtime)
+                print(f'time wasted here: {time.time() - start_time}')
+
+                with open(current_frame_file, 'r+') as framedata:
+                    jsondata = json.load(framedata)
+
+                    for i in range(4):
+                        curr_name = jsondata['players'][i]['name']
+                        if curr_name[0] == '>':
+                            mod = int(time.time()/4) % len(word_list)
+                            end_index = curr_name.find('\r')
+                            new_name = '>' + word_list[mod] + curr_name[end_index:]
+                            jsondata['players'][i]['name'] = new_name
+                        
+
+                    if time.time() - start_time > .95:
+                        framedata.close()
+                        return (unit_commands + building_commands)
+
+                    framedata.seek(0)
+                    json.dump(jsondata, framedata)
+                    framedata.truncate()
+
+            #PROFILER.profilePrint()
+            #PROFILER.profileReset()
+            
+        except:
+            pass
     
+    if len(cws.gatherEmpire() + cws.gatherCity()) == 12 or len(cws.gatherEmpire() + cws.gatherCity()) == 11:
+        try:
+        
+            if time.time() - start_time < .81:
+                word_list = "".split(' ')
+                game_folder = max(filter(os.path.isdir, glob('../games/*')), key=os.path.getmtime)
+                current_frame_file = max([f for f in filter(os.path.isfile, glob(game_folder + '/[0-9]*.json')) if 'out' not in f], key=os.path.getmtime)
+                print(f'time wasted here: {time.time() - start_time}')
+
+                with open(current_frame_file, 'r+') as framedata:
+                    jsondata = json.load(framedata)
+
+                    for i in range(4):
+                        curr_name = jsondata['players'][i]['name']
+                        if curr_name[0] == '>':
+                            mod = int(time.time()/4) % len(word_list)
+                            end_index = curr_name.find('\r')
+                            new_name = '>' + word_list[mod] + curr_name[end_index:]
+                            jsondata['players'][i]['name'] = new_name
+                        
+
+                    if time.time() - start_time > .95:
+                        framedata.close()
+                        return (unit_commands + building_commands)
+
+                    framedata.seek(0)
+                    json.dump(jsondata, framedata)
+                    framedata.truncate()
+
+            #PROFILER.profilePrint()
+            #PROFILER.profileReset()
+            
+        except:
+            pass
+
     #cws.render()
     #print(players[team_idx])
     #print(f"Population: {len(cws.gatherEmpire())} / {cws.get_housing()}")
     """
-    reset_number_system()
-    try:
     
-        if time.time() - start_time < .81:
-            word_list = "You wanna fight? There is no point in fighting if you already lost you useless norse animal, you can't even insult people without cursing, you have no future and we both know it, you know who else knows it? Your parents! You're the biggest dissapointment in their life after Ghost Busters 3. After 15 years on Earth you still haven't learnt how to cook a proper food and behave in the society. Nobody will miss you after your death. You might say: \"But my best friend!\" He won't even attend your funeral, because he is as clowny as you are. You live like a clown you will die like a clown. I will be surprised if you even care because you have nothing to lose you've achieved nothing. Cya. One time I had a kid come over to my house and tell me that my house was small and boring. So then I told him that my house was small because I had an amazing secret basement full of games and toys that I never tell anyone about. This kid wanted to see it really badly at that point, so I told him to wait outside the basement door so I could get the games and toys ready for him. I took a bucket of glitter mixed in with super glue and set it up on the top of the basement door. I gave the kid the cue to come inside, and when he opened the door, I stabbed him.".split(' ')
-            game_folder = max(filter(os.path.isdir, glob('../games/*')), key=os.path.getmtime)
-            current_frame_file = max([f for f in filter(os.path.isfile, glob(game_folder + '/[0-9]*.json')) if 'out' not in f], key=os.path.getmtime)
-            print(f'time wasted here: {time.time() - start_time}')
-
-            with open(current_frame_file, 'r+') as framedata:
-                jsondata = json.load(framedata)
-
-                for i in range(4):
-                    curr_name = jsondata['players'][i]['name']
-                    if curr_name[0] == '>':
-                        mod = int(time.time()/4) % len(word_list)
-                        end_index = curr_name.find('\r')
-                        new_name = '>' + word_list[mod] + curr_name[end_index:]
-                        jsondata['players'][i]['name'] = new_name
-                    
-
-                if time.time() - start_time > .95:
-                    framedata.close()
-                    return (unit_commands + building_commands)
-
-                framedata.seek(0)
-                json.dump(jsondata, framedata)
-                framedata.truncate()
-
-        #PROFILER.profilePrint()
-        #PROFILER.profileReset()
-        
-    except:
-        return (unit_commands + building_commands)
     """
     return (unit_commands + building_commands)
     # Determine what the foliage is for unexplored tiles.
